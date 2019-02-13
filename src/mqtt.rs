@@ -486,28 +486,40 @@ pub trait Publishable {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-pub trait Publish<'a> {
-    fn publish(&'a self, tx: &mut Agent) -> Result<(), Error>;
+pub trait Publish {
+    fn publish(&self, tx: &mut Agent) -> Result<(), Error>;
 }
 
-impl<'a, T> Publish<'a> for T
+impl<T> Publish for T
 where
     T: Publishable,
 {
-    fn publish(&'a self, tx: &mut Agent) -> Result<(), Error> {
+    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
         tx.publish(self)?;
         Ok(())
     }
 }
 
-impl<'a, T1, T2> Publish<'a> for (T1, T2)
+impl<T1, T2> Publish for (T1, T2)
 where
     T1: Publishable,
     T2: Publishable,
 {
-    fn publish(&'a self, tx: &mut Agent) -> Result<(), Error> {
+    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
         tx.publish(&self.0)?;
         tx.publish(&self.1)?;
+        Ok(())
+    }
+}
+
+impl<T> Publish for Vec<T>
+where
+    T: Publishable,
+{
+    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
+        for msg in self {
+            tx.publish(msg)?;
+        }
         Ok(())
     }
 }
