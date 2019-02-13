@@ -360,7 +360,7 @@ impl<T, P> OutgoingMessage<T, P>
 where
     T: serde::Serialize,
 {
-    fn new(payload: T, properties: P, destination: Destination) -> Self {
+    pub fn new(payload: T, properties: P, destination: Destination) -> Self {
         Self {
             payload,
             properties,
