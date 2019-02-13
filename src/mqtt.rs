@@ -231,6 +231,12 @@ pub struct IncomingResponseProperties {
     authn: AuthnProperties,
 }
 
+impl IncomingResponseProperties {
+    pub fn correlation_data(&self) -> &str {
+        &self.correlation_data
+    }
+}
+
 impl Authenticable for IncomingResponseProperties {
     fn account_id(&self) -> &AccountId {
         &self.authn.account_id()
