@@ -318,24 +318,28 @@ impl OutgoingEventProperties {
 pub struct OutgoingRequestProperties {
     method: String,
     correlation_data: String,
-    response_topic: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_topic: Option<String>,
     #[serde(flatten)]
     authn: Option<AuthnProperties>,
 }
 
 impl OutgoingRequestProperties {
-    pub fn new(
-        method: String,
-        response_topic: String,
-        correlation_data: String,
-        authn: Option<AuthnProperties>,
-    ) -> Self {
+    pub fn new(method: &str, correlation_data: &str) -> Self {
         Self {
-            method,
-            response_topic,
-            correlation_data,
-            authn,
+            method: method.to_owned(),
+            correlation_data: correlation_data.to_owned(),
+            response_topic: None,
+            authn: None,
         }
+    }
+
+    pub fn set_authn(&mut self, authn: AuthnProperties) {
+        self.authn = Some(authn);
+    }
+
+    pub fn set_response_topic(&mut self, response_topic: &str) {
+        self.response_topic = Some(response_topic.to_owned());
     }
 
     pub fn correlation_data(&self) -> &str {
