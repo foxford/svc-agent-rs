@@ -119,7 +119,7 @@ impl<'de> de::Deserialize<'de> for AuthnProperties {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &["agent_label", "account_label", "audience"];
+        const FIELDS: &[&str] = &["agent_label", "account_label", "audience"];
         deserializer.deserialize_struct("AuthnProperties", FIELDS, AuthnPropertiesVisitor)
     }
 }
