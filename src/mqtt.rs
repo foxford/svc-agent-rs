@@ -148,7 +148,7 @@ impl Agent {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
-pub(crate) struct AuthnProperties {
+pub struct AuthnProperties {
     agent_id: AgentId,
 }
 
@@ -310,12 +310,30 @@ impl OutgoingEventProperties {
 
 #[derive(Debug, Serialize)]
 pub struct OutgoingRequestProperties {
-    method: &'static str,
+    method: String,
+    correlation_data: String,
+    response_topic: String,
+    #[serde(flatten)]
+    authn: Option<AuthnProperties>,
 }
 
 impl OutgoingRequestProperties {
-    pub fn new(method: &'static str) -> Self {
-        Self { method }
+    pub fn new(
+        method: String,
+        response_topic: String,
+        authn: Option<AuthnProperties>,
+        correlation_data: String,
+    ) -> Self {
+        Self {
+            method,
+            response_topic,
+            authn,
+            correlation_data,
+        }
+    }
+
+    pub fn correlation_data(&self) -> &str {
+        &self.correlation_data
     }
 }
 
