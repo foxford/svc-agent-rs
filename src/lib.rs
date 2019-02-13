@@ -15,7 +15,7 @@ pub trait Addressable: Authenticable {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(feature = "diesel", derive(FromSqlRow, AsExpression))]
 #[cfg_attr(feature = "diesel", sql_type = "sql::Agent_id")]
 pub struct AgentId {
@@ -132,14 +132,14 @@ pub enum Destination {
 #[derive(Debug)]
 pub enum Source<'a> {
     // <- event(any-from-app): apps/ACCOUNT_ID/api/v1/BROADCAST_URI
-    Broadcast(&'a dyn Authenticable, &'a str),
+    Broadcast(&'a AccountId, &'a str),
     // <- request(app-from-any): agents/+/api/v1/out/ACCOUNT_ID(ME)
     Multicast,
     // <- request(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
     // <- request(one-from-any): agents/AGENT_ID(ME)/api/v1/in/+
     // <- response(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
     // <- response(one-from-any): agents/AGENT_ID(ME)/api/v1/in/+
-    Unicast(Option<&'a dyn Authenticable>),
+    Unicast(Option<&'a AccountId>),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,23 +147,29 @@ pub enum Source<'a> {
 pub struct Subscription {}
 
 impl Subscription {
-    pub fn broadcast_events<'a>(
-        from: &'a dyn Authenticable,
-        uri: &'a str,
-    ) -> EventSubscription<'a> {
-        EventSubscription::new(Source::Broadcast(from, uri))
+    pub fn broadcast_events<'a, A>(from: &'a A, uri: &'a str) -> EventSubscription<'a>
+    where
+        A: Authenticable,
+    {
+        EventSubscription::new(Source::Broadcast(from.as_account_id(), uri))
     }
 
     pub fn multicast_requests<'a>() -> RequestSubscription<'a> {
         RequestSubscription::new(Source::Multicast)
     }
 
-    pub fn unicast_requests(from: Option<&dyn Authenticable>) -> RequestSubscription {
-        RequestSubscription::new(Source::Unicast(from))
+    pub fn unicast_requests<A>(from: Option<&A>) -> RequestSubscription
+    where
+        A: Authenticable,
+    {
+        RequestSubscription::new(Source::Unicast(from.map(|val| val.as_account_id())))
     }
 
-    pub fn unicast_responses(from: Option<&dyn Authenticable>) -> ResponseSubscription {
-        ResponseSubscription::new(Source::Unicast(from))
+    pub fn unicast_responses<A>(from: Option<&A>) -> ResponseSubscription
+    where
+        A: Authenticable,
+    {
+        ResponseSubscription::new(Source::Unicast(from.map(|val| val.as_account_id())))
     }
 }
 
