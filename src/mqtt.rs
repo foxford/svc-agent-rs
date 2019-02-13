@@ -327,14 +327,14 @@ impl OutgoingRequestProperties {
     pub fn new(
         method: String,
         response_topic: String,
-        authn: Option<AuthnProperties>,
         correlation_data: String,
+        authn: Option<AuthnProperties>,
     ) -> Self {
         Self {
             method,
             response_topic,
-            authn,
             correlation_data,
+            authn,
         }
     }
 
@@ -384,7 +384,7 @@ impl<T, P> OutgoingMessage<T, P>
 where
     T: serde::Serialize,
 {
-    pub fn new(payload: T, properties: P, destination: Destination) -> Self {
+    fn new(payload: T, properties: P, destination: Destination) -> Self {
         Self {
             payload,
             properties,
