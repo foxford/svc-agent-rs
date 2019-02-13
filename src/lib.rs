@@ -10,7 +10,7 @@ use std::str::FromStr;
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Addressable: Authenticable {
-    fn agent_id(&self) -> &AgentId;
+    fn as_agent_id(&self) -> &AgentId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,10 +33,6 @@ impl AgentId {
 
     pub fn label(&self) -> &str {
         &self.label
-    }
-
-    pub fn account_id(&self) -> &AccountId {
-        &self.account_id
     }
 }
 
@@ -69,13 +65,13 @@ impl FromStr for AgentId {
 }
 
 impl Authenticable for AgentId {
-    fn account_id(&self) -> &AccountId {
+    fn as_account_id(&self) -> &AccountId {
         &self.account_id
     }
 }
 
 impl Addressable for AgentId {
-    fn agent_id(&self) -> &Self {
+    fn as_agent_id(&self) -> &Self {
         self
     }
 }
