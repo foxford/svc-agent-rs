@@ -20,9 +20,9 @@ impl ser::Serialize for AuthnProperties {
         use ser::SerializeStruct;
 
         let mut state = serializer.serialize_struct("AuthnProperties", 3)?;
-        state.serialize_field("agent_label", self.agent_id().label())?;
-        state.serialize_field("account_label", self.account_id().label())?;
-        state.serialize_field("audience", self.account_id().audience())?;
+        state.serialize_field("agent_label", self.as_agent_id().label())?;
+        state.serialize_field("account_label", self.as_account_id().label())?;
+        state.serialize_field("audience", self.as_account_id().audience())?;
         state.end()
     }
 }

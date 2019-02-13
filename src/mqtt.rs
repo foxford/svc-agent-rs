@@ -153,13 +153,13 @@ pub struct AuthnProperties {
 }
 
 impl Authenticable for AuthnProperties {
-    fn account_id(&self) -> &AccountId {
-        &self.agent_id.account_id()
+    fn as_account_id(&self) -> &AccountId {
+        &self.agent_id.as_account_id()
     }
 }
 
 impl Addressable for AuthnProperties {
-    fn agent_id(&self) -> &AgentId {
+    fn as_agent_id(&self) -> &AgentId {
         &self.agent_id
     }
 }
@@ -179,14 +179,14 @@ pub struct IncomingEventProperties {
 }
 
 impl Authenticable for IncomingEventProperties {
-    fn account_id(&self) -> &AccountId {
-        &self.authn.account_id()
+    fn as_account_id(&self) -> &AccountId {
+        &self.authn.as_account_id()
     }
 }
 
 impl Addressable for IncomingEventProperties {
-    fn agent_id(&self) -> &AgentId {
-        &self.authn.agent_id()
+    fn as_agent_id(&self) -> &AgentId {
+        &self.authn.as_agent_id()
     }
 }
 
@@ -213,14 +213,14 @@ impl IncomingRequestProperties {
 }
 
 impl Authenticable for IncomingRequestProperties {
-    fn account_id(&self) -> &AccountId {
-        &self.authn.account_id()
+    fn as_account_id(&self) -> &AccountId {
+        &self.authn.as_account_id()
     }
 }
 
 impl Addressable for IncomingRequestProperties {
-    fn agent_id(&self) -> &AgentId {
-        &self.authn.agent_id()
+    fn as_agent_id(&self) -> &AgentId {
+        &self.authn.as_agent_id()
     }
 }
 
@@ -238,14 +238,14 @@ impl IncomingResponseProperties {
 }
 
 impl Authenticable for IncomingResponseProperties {
-    fn account_id(&self) -> &AccountId {
-        &self.authn.account_id()
+    fn as_account_id(&self) -> &AccountId {
+        &self.authn.as_account_id()
     }
 }
 
 impl Addressable for IncomingResponseProperties {
-    fn agent_id(&self) -> &AgentId {
-        &self.authn.agent_id()
+    fn as_agent_id(&self) -> &AgentId {
+        &self.authn.as_agent_id()
     }
 }
 
@@ -292,7 +292,7 @@ impl<T> IncomingRequest<T> {
         OutgoingMessage::new(
             data,
             self.properties.to_response(status),
-            Destination::Unicast(self.properties().agent_id().clone()),
+            Destination::Unicast(self.properties().as_agent_id().clone()),
         )
     }
 }
@@ -410,27 +410,25 @@ impl<T> OutgoingRequest<T>
 where
     T: serde::Serialize,
 {
-    pub fn multicast(
-        payload: T,
-        properties: OutgoingRequestProperties,
-        to: &dyn Addressable,
-    ) -> Self {
+    pub fn multicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
+    where
+        A: Addressable,
+    {
         OutgoingMessage::new(
             payload,
             properties,
-            Destination::Multicast(to.account_id().clone()),
+            Destination::Multicast(to.as_account_id().clone()),
         )
     }
 
-    pub fn unicast(
-        payload: T,
-        properties: OutgoingRequestProperties,
-        to: &dyn Addressable,
-    ) -> Self {
+    pub fn unicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
+    where
+        A: Addressable,
+    {
         OutgoingMessage::new(
             payload,
             properties,
-            Destination::Unicast(to.agent_id().clone()),
+            Destination::Unicast(to.as_agent_id().clone()),
         )
     }
 }
@@ -439,15 +437,14 @@ impl<T> OutgoingResponse<T>
 where
     T: serde::Serialize,
 {
-    pub fn unicast(
-        payload: T,
-        properties: OutgoingResponseProperties,
-        to: &dyn Addressable,
-    ) -> Self {
+    pub fn unicast<A>(payload: T, properties: OutgoingResponseProperties, to: &A) -> Self
+    where
+        A: Addressable,
+    {
         OutgoingMessage::new(
             payload,
             properties,
-            Destination::Unicast(to.agent_id().clone()),
+            Destination::Unicast(to.as_agent_id().clone()),
         )
     }
 }
@@ -504,7 +501,10 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Publishable {
-    fn destination_topic(&self, me: &dyn Addressable) -> Result<String, Error>;
+    fn destination_topic<A>(&self, me: &A) -> Result<String, Error>
+    where
+        A: Addressable;
+
     fn to_bytes(&self) -> Result<String, Error>;
 }
 
@@ -551,15 +551,20 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 trait DestinationTopic {
-    fn destination_topic(&self, me: &dyn Addressable, dest: &Destination) -> Result<String, Error>;
+    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
+    where
+        A: Addressable;
 }
 
 impl DestinationTopic for OutgoingEventProperties {
-    fn destination_topic(&self, me: &dyn Addressable, dest: &Destination) -> Result<String, Error> {
+    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match dest {
             Destination::Broadcast(ref uri) => Ok(format!(
                 "apps/{app}/api/v1/{uri}",
-                app = me.account_id(),
+                app = me.as_account_id(),
                 uri = uri,
             )),
             _ => Err(format_err!(
@@ -571,16 +576,19 @@ impl DestinationTopic for OutgoingEventProperties {
 }
 
 impl DestinationTopic for OutgoingRequestProperties {
-    fn destination_topic(&self, me: &dyn Addressable, dest: &Destination) -> Result<String, Error> {
+    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match dest {
             Destination::Unicast(ref agent_id) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/{app}",
                 agent_id = agent_id,
-                app = me.account_id(),
+                app = me.as_account_id(),
             )),
             Destination::Multicast(ref account_id) => Ok(format!(
                 "agents/{agent_id}/api/v1/out/{app}",
-                agent_id = me.agent_id(),
+                agent_id = me.as_agent_id(),
                 app = account_id,
             )),
             _ => Err(format_err!(
@@ -592,14 +600,17 @@ impl DestinationTopic for OutgoingRequestProperties {
 }
 
 impl DestinationTopic for OutgoingResponseProperties {
-    fn destination_topic(&self, me: &dyn Addressable, dest: &Destination) -> Result<String, Error> {
+    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match &self.response_topic {
             Some(ref val) => Ok(val.to_owned()),
             None => match dest {
                 Destination::Unicast(ref agent_id) => Ok(format!(
                     "agents/{agent_id}/api/v1/in/{app}",
                     agent_id = agent_id,
-                    app = me.account_id(),
+                    app = me.as_account_id(),
                 )),
                 _ => Err(format_err!(
                     "destination = '{:?}' is incompatible with response message type",
@@ -613,15 +624,20 @@ impl DestinationTopic for OutgoingResponseProperties {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait SubscriptionTopic {
-    fn subscription_topic(&self, agent_id: &dyn Addressable) -> Result<String, Error>;
+    fn subscription_topic<A>(&self, agent_id: &A) -> Result<String, Error>
+    where
+        A: Addressable;
 }
 
 impl<'a> SubscriptionTopic for EventSubscription<'a> {
-    fn subscription_topic(&self, _me: &dyn Addressable) -> Result<String, Error> {
+    fn subscription_topic<A>(&self, _me: &A) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match self.source {
             Source::Broadcast(ref from, ref uri) => Ok(format!(
                 "apps/{app}/api/v1/{uri}",
-                app = from.account_id(),
+                app = from.as_account_id(),
                 uri = uri,
             )),
             _ => Err(format_err!(
@@ -633,17 +649,23 @@ impl<'a> SubscriptionTopic for EventSubscription<'a> {
 }
 
 impl<'a> SubscriptionTopic for RequestSubscription<'a> {
-    fn subscription_topic(&self, me: &dyn Addressable) -> Result<String, Error> {
+    fn subscription_topic<A>(&self, me: &A) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match self.source {
-            Source::Multicast => Ok(format!("agents/+/api/v1/out/{app}", app = me.account_id())),
+            Source::Multicast => Ok(format!(
+                "agents/+/api/v1/out/{app}",
+                app = me.as_account_id(),
+            )),
             Source::Unicast(Some(ref from)) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/{app}",
-                agent_id = me.agent_id(),
-                app = from.account_id(),
+                agent_id = me.as_agent_id(),
+                app = from.as_account_id(),
             )),
             Source::Unicast(None) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/+",
-                agent_id = me.agent_id(),
+                agent_id = me.as_agent_id(),
             )),
             _ => Err(format_err!(
                 "source = '{:?}' is incompatible with request subscription",
@@ -654,16 +676,19 @@ impl<'a> SubscriptionTopic for RequestSubscription<'a> {
 }
 
 impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
-    fn subscription_topic(&self, me: &dyn Addressable) -> Result<String, Error> {
+    fn subscription_topic<A>(&self, me: &A) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
         match self.source {
             Source::Unicast(Some(ref from)) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/{app}",
-                agent_id = me.agent_id(),
-                app = from.account_id(),
+                agent_id = me.as_agent_id(),
+                app = from.as_account_id(),
             )),
             Source::Unicast(None) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/+",
-                agent_id = me.agent_id(),
+                agent_id = me.as_agent_id(),
             )),
             _ => Err(format_err!(
                 "source = '{:?}' is incompatible with response subscription",
@@ -785,11 +810,10 @@ pub mod compat {
     }
 
     impl DestinationTopic for OutgoingEnvelopeProperties {
-        fn destination_topic(
-            &self,
-            me: &dyn Addressable,
-            dest: &Destination,
-        ) -> Result<String, Error> {
+        fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
+        where
+            A: Addressable,
+        {
             match self {
                 OutgoingEnvelopeProperties::Event(val) => val.destination_topic(me, dest),
                 OutgoingEnvelopeProperties::Request(val) => val.destination_topic(me, dest),
@@ -799,7 +823,10 @@ pub mod compat {
     }
 
     impl<'a> Publishable for OutgoingEnvelope {
-        fn destination_topic(&self, me: &dyn Addressable) -> Result<String, Error> {
+        fn destination_topic<A>(&self, me: &A) -> Result<String, Error>
+        where
+            A: Addressable,
+        {
             self.properties.destination_topic(me, &self.destination)
         }
 
