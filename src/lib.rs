@@ -162,11 +162,11 @@ impl Subscription {
         RequestSubscription::new(Source::Multicast)
     }
 
-    pub fn unicast_requests<'a>(from: Option<&'a dyn Authenticable>) -> RequestSubscription<'a> {
+    pub fn unicast_requests(from: Option<&dyn Authenticable>) -> RequestSubscription {
         RequestSubscription::new(Source::Unicast(from))
     }
 
-    pub fn unicast_responses<'a>(from: Option<&'a dyn Authenticable>) -> ResponseSubscription<'a> {
+    pub fn unicast_responses(from: Option<&dyn Authenticable>) -> ResponseSubscription {
         ResponseSubscription::new(Source::Unicast(from))
     }
 }
