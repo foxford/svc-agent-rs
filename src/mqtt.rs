@@ -16,9 +16,9 @@ pub enum ConnectionMode {
 }
 
 impl fmt::Display for ConnectionMode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
-            f,
+            fmt,
             "{}",
             match self {
                 ConnectionMode::Agent => "agents",
@@ -94,9 +94,7 @@ impl AgentBuilder {
             .port_part()
             .ok_or_else(|| err_msg("missing MQTT port"))?;
 
-        Ok(rumqtt::MqttOptions::new(client_id, host, port.as_u16())
-            .set_keep_alive(30)
-            .set_reconnect_opts(rumqtt::ReconnectOptions::AfterFirstSuccess(5)))
+        Ok(rumqtt::MqttOptions::new(client_id, host, port.as_u16()))
     }
 }
 
@@ -204,10 +202,7 @@ impl IncomingRequestProperties {
         &self.method
     }
 
-    pub fn to_response(
-        &self,
-        status: &'static OutgoingResponseStatus,
-    ) -> OutgoingResponseProperties {
+    pub fn to_response(&self, status: OutgoingResponseStatus) -> OutgoingResponseProperties {
         OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
     }
 }
@@ -281,11 +276,7 @@ where
 }
 
 impl<T> IncomingRequest<T> {
-    pub fn to_response<R>(
-        &self,
-        data: R,
-        status: &'static OutgoingResponseStatus,
-    ) -> OutgoingResponse<R>
+    pub fn to_response<R>(&self, data: R, status: OutgoingResponseStatus) -> OutgoingResponse<R>
     where
         R: serde::Serialize,
     {
@@ -324,18 +315,18 @@ pub struct OutgoingRequestProperties {
 }
 
 impl OutgoingRequestProperties {
-    pub fn new(
-        method: String,
-        response_topic: String,
-        correlation_data: String,
-        authn: Option<AuthnProperties>,
-    ) -> Self {
+    pub fn new(method: &str, response_topic: &str, correlation_data: &str) -> Self {
         Self {
-            method,
-            response_topic,
-            correlation_data,
-            authn,
+            method: method.to_owned(),
+            response_topic: response_topic.to_owned(),
+            correlation_data: correlation_data.to_owned(),
+            authn: None,
         }
+    }
+
+    pub fn set_authn(&mut self, authn: AuthnProperties) -> &mut Self {
+        self.authn = Some(authn);
+        self
     }
 
     pub fn correlation_data(&self) -> &str {
@@ -346,7 +337,7 @@ impl OutgoingRequestProperties {
 #[derive(Debug, Serialize)]
 pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
-    status: &'static OutgoingResponseStatus,
+    status: OutgoingResponseStatus,
     correlation_data: String,
     #[serde(skip)]
     response_topic: Option<String>,
@@ -354,7 +345,7 @@ pub struct OutgoingResponseProperties {
 
 impl OutgoingResponseProperties {
     pub fn new(
-        status: &'static OutgoingResponseStatus,
+        status: OutgoingResponseStatus,
         correlation_data: &str,
         response_topic: Option<&str>,
     ) -> Self {
@@ -412,7 +403,7 @@ where
 {
     pub fn multicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
     where
-        A: Addressable,
+        A: Authenticable,
     {
         OutgoingMessage::new(
             payload,
@@ -635,9 +626,9 @@ impl<'a> SubscriptionTopic for EventSubscription<'a> {
         A: Addressable,
     {
         match self.source {
-            Source::Broadcast(ref from, ref uri) => Ok(format!(
+            Source::Broadcast(ref from_account_id, ref uri) => Ok(format!(
                 "apps/{app}/api/v1/{uri}",
-                app = from.as_account_id(),
+                app = from_account_id,
                 uri = uri,
             )),
             _ => Err(format_err!(
@@ -658,10 +649,10 @@ impl<'a> SubscriptionTopic for RequestSubscription<'a> {
                 "agents/+/api/v1/out/{app}",
                 app = me.as_account_id(),
             )),
-            Source::Unicast(Some(ref from)) => Ok(format!(
+            Source::Unicast(Some(ref from_account_id)) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/{app}",
                 agent_id = me.as_agent_id(),
-                app = from.as_account_id(),
+                app = from_account_id,
             )),
             Source::Unicast(None) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/+",
@@ -681,10 +672,10 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
         A: Addressable,
     {
         match self.source {
-            Source::Unicast(Some(ref from)) => Ok(format!(
+            Source::Unicast(Some(ref from_account_id)) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/{app}",
                 agent_id = me.as_agent_id(),
-                app = from.as_account_id(),
+                app = from_account_id,
             )),
             Source::Unicast(None) => Ok(format!(
                 "agents/{agent_id}/api/v1/in/+",

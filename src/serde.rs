@@ -17,7 +17,7 @@ impl ser::Serialize for AuthnProperties {
     where
         S: ser::Serializer,
     {
-        use ser::SerializeStruct;
+        use serde::ser::SerializeStruct;
 
         let mut state = serializer.serialize_struct("AuthnProperties", 3)?;
         state.serialize_field("agent_label", self.as_agent_id().label())?;
