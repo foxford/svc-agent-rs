@@ -11,7 +11,8 @@ use crate::{
 
 #[derive(Debug)]
 pub enum ConnectionMode {
-    Agent,
+    Default,
+    Service,
     Bridge,
 }
 
@@ -21,7 +22,8 @@ impl fmt::Display for ConnectionMode {
             fmt,
             "{}",
             match self {
-                ConnectionMode::Agent => "agents",
+                ConnectionMode::Default => "agents",
+                ConnectionMode::Service => "service-agents",
                 ConnectionMode::Bridge => "bridge-agents",
             }
         )
@@ -47,7 +49,7 @@ impl AgentBuilder {
         Self {
             agent_id,
             version: String::from("v1.mqtt3"),
-            mode: ConnectionMode::Agent,
+            mode: ConnectionMode::Default,
         }
     }
 
