@@ -2,13 +2,93 @@ use serde::{de, ser};
 use serde_derive::Serialize;
 use std::fmt;
 
-use crate::{mqtt::AuthnProperties, AccountId, Addressable, AgentId, Authenticable};
+use crate::{mqtt::AuthnProperties, AccountId, Addressable, AgentId, Authenticable, SharedGroup};
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Serialize)]
 #[serde(remote = "http::StatusCode")]
 pub(crate) struct HttpStatusCodeRef(#[serde(getter = "http::StatusCode::as_u16")] u16);
+
+////////////////////////////////////////////////////////////////////////////////
+
+impl ser::Serialize for AgentId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> de::Deserialize<'de> for AgentId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct AgentIdVisitor;
+
+        impl<'de> de::Visitor<'de> for AgentIdVisitor {
+            type Value = AgentId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct AgentId")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                use std::str::FromStr;
+
+                AgentId::from_str(v)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        deserializer.deserialize_str(AgentIdVisitor)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+impl ser::Serialize for SharedGroup {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> de::Deserialize<'de> for SharedGroup {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct SharedGroupVisitor;
+
+        impl<'de> de::Visitor<'de> for SharedGroupVisitor {
+            type Value = SharedGroup;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct SharedGroup")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                use std::str::FromStr;
+
+                SharedGroup::from_str(v)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        deserializer.deserialize_str(SharedGroupVisitor)
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

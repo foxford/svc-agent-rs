@@ -3,7 +3,6 @@
 extern crate diesel;
 
 use failure::{format_err, Error};
-use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
@@ -15,7 +14,7 @@ pub trait Addressable: Authenticable {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "diesel", derive(FromSqlRow, AsExpression))]
 #[cfg_attr(feature = "diesel", sql_type = "sql::Agent_id")]
 pub struct AgentId {
@@ -38,13 +37,7 @@ impl AgentId {
 
 impl fmt::Display for AgentId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            fmt,
-            "{}.{}.{}",
-            self.label(),
-            self.account_id.label(),
-            self.account_id.audience(),
-        )
+        write!(fmt, "{}.{}", self.label(), self.account_id)
     }
 }
 
@@ -52,13 +45,9 @@ impl FromStr for AgentId {
     type Err = Error;
 
     fn from_str(val: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = val.splitn(3, '.').collect();
+        let parts: Vec<&str> = val.splitn(2, '.').collect();
         match parts[..] {
-            [ref agent_label, ref account_label, ref audience] => {
-                let account_id = AccountId::new(account_label, audience);
-                let agent_id = Self::new(agent_label, account_id);
-                Ok(agent_id)
-            }
+            [ref label, ref rest] => Ok(Self::new(label, rest.parse::<AccountId>()?)),
             _ => Err(format_err!("invalid value for the agent id: {}", val)),
         }
     }
@@ -78,7 +67,7 @@ impl Addressable for AgentId {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SharedGroup {
     label: String,
     account_id: AccountId,
@@ -207,7 +196,6 @@ impl<'a> ResponseSubscription<'a> {
 
 #[cfg(feature = "diesel")]
 pub mod sql {
-
     use super::{AccountId, AgentId};
 
     use diesel::deserialize::{self, FromSql};
