@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"
@@ -22,4 +22,4 @@ base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
 rumqtt = "0.30"
 http = "0.1"
-svc-authn = "0.2"
+svc-authn = "0.3"
