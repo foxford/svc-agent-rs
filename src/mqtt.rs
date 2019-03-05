@@ -35,6 +35,8 @@ impl fmt::Display for ConnectionMode {
 #[derive(Debug, Deserialize)]
 pub struct AgentConfig {
     uri: String,
+    #[serde(default)]
+    clean_session: bool,
 }
 
 #[derive(Debug)]
@@ -96,7 +98,10 @@ impl AgentBuilder {
             .port_part()
             .ok_or_else(|| err_msg("missing MQTT port"))?;
 
-        Ok(rumqtt::MqttOptions::new(client_id, host, port.as_u16()))
+        let opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16())
+            .set_clean_session(config.clean_session);
+
+        Ok(opts)
     }
 }
 
