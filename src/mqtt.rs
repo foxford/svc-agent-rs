@@ -34,8 +34,11 @@ impl fmt::Display for ConnectionMode {
 #[derive(Debug, Deserialize)]
 pub struct AgentConfig {
     uri: String,
-    #[serde(default)]
-    clean_session: bool,
+    clean_session: Option<bool>,
+    keep_alive_interval: Option<u64>,
+    reconnect_interval: Option<u64>,
+    outgoing_message_queue_size: Option<usize>,
+    incomming_message_queue_size: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -56,18 +59,13 @@ impl AgentBuilder {
 
     pub fn version(self, version: &str) -> Self {
         Self {
-            agent_id: self.agent_id,
             version: version.to_owned(),
-            mode: self.mode,
+            ..self
         }
     }
 
     pub fn mode(self, mode: ConnectionMode) -> Self {
-        Self {
-            agent_id: self.agent_id,
-            version: self.version,
-            mode,
-        }
+        Self { mode, ..self }
     }
 
     pub fn start(
@@ -101,8 +99,29 @@ impl AgentBuilder {
             .port_part()
             .ok_or_else(|| Error::new("missing MQTT port"))?;
 
-        let opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16())
-            .set_clean_session(config.clean_session);
+        // TODO: change to convenient code as soon as the PR will be merged
+        // https://github.com/AtherEnergy/rumqtt/pull/145
+        let mut opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16());
+        opts = match config.clean_session {
+            Some(value) => opts.set_clean_session(value),
+            _ => opts,
+        };
+        opts = match config.keep_alive_interval {
+            Some(value) => opts.set_keep_alive(value as u16),
+            _ => opts,
+        };
+        opts = match config.reconnect_interval {
+            Some(value) => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Always(value)),
+            _ => opts,
+        };
+        opts = match config.incomming_message_queue_size {
+            Some(value) => opts.set_notification_channel_capacity(value),
+            _ => opts,
+        };
+        opts = match config.outgoing_message_queue_size {
+            Some(value) => opts.set_outgoing_queuelimit(value, std::time::Duration::from_secs(5)),
+            _ => opts,
+        };
 
         Ok(opts)
     }
