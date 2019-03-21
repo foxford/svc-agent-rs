@@ -34,8 +34,11 @@ impl fmt::Display for ConnectionMode {
 #[derive(Debug, Deserialize)]
 pub struct AgentConfig {
     uri: String,
-    #[serde(default)]
-    clean_session: bool,
+    clean_session: Option<bool>,
+    keep_alive_interval: Option<u64>,
+    reconnect_interval: Option<u64>,
+    outgoing_message_queue_size: Option<usize>,
+    incomming_message_queue_size: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -56,18 +59,13 @@ impl AgentBuilder {
 
     pub fn version(self, version: &str) -> Self {
         Self {
-            agent_id: self.agent_id,
             version: version.to_owned(),
-            mode: self.mode,
+            ..self
         }
     }
 
     pub fn mode(self, mode: ConnectionMode) -> Self {
-        Self {
-            agent_id: self.agent_id,
-            version: self.version,
-            mode,
-        }
+        Self { mode, ..self }
     }
 
     pub fn start(
@@ -101,8 +99,25 @@ impl AgentBuilder {
             .port_part()
             .ok_or_else(|| Error::new("missing MQTT port"))?;
 
-        let opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16())
-            .set_clean_session(config.clean_session);
+        let mut opts = rumqtt::MqttOptions::new();
+        opts.set_client_id(client_id);
+        opts.set_host(host);
+        opts.set_port(port.as_u16());
+        if let Some(value) = config.clean_session {
+            opts.set_clean_session(value);
+        };
+        if let Some(value) = config.keep_alive_interval {
+            opts.set_keep_alive(value);
+        };
+        if let Some(value) = config.reconnect_interval {
+            opts.set_reconnect_opts(rumqtt::ReconnectOptions::Always(value));
+        };
+        if let Some(value) = config.incomming_message_queue_size {
+            opts.set_notification_channel_capacity(value);
+        };
+        if let Some(value) = config.outgoing_message_queue_size {
+            opts.set_outgoing_queuelimit(value, std::time::Duration::from_secs(5));
+        };
 
         Ok(opts)
     }
