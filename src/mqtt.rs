@@ -105,6 +105,7 @@ impl AgentBuilder {
     }
 }
 
+#[derive(Clone)]
 pub struct Agent {
     id: AgentId,
     tx: rumqtt::MqttClient,
