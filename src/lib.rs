@@ -2,7 +2,6 @@
 #[cfg(feature = "diesel")]
 extern crate diesel;
 
-use failure::{format_err, Error};
 use std::fmt;
 use std::str::FromStr;
 
@@ -47,8 +46,19 @@ impl FromStr for AgentId {
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = val.splitn(2, '.').collect();
         match parts[..] {
-            [ref label, ref rest] => Ok(Self::new(label, rest.parse::<AccountId>()?)),
-            _ => Err(format_err!("invalid value for the agent id: {}", val)),
+            [ref label, ref rest] => {
+                let account_id = rest.parse::<AccountId>().map_err(|e| {
+                    Error::new(&format!(
+                        "error deserializing shared group from a string, {}",
+                        &e
+                    ))
+                })?;
+                Ok(Self::new(label, account_id))
+            }
+            _ => Err(Error::new(&format!(
+                "invalid value for the agent id: {}",
+                val
+            ))),
         }
     }
 }
@@ -94,11 +104,19 @@ impl FromStr for SharedGroup {
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = val.splitn(2, '.').collect();
         match parts[..] {
-            [ref label, ref rest] => Ok(Self::new(label, rest.parse::<AccountId>()?)),
-            _ => Err(format_err!(
+            [ref label, ref rest] => {
+                let account_id = rest.parse::<AccountId>().map_err(|e| {
+                    Error::new(&format!(
+                        "error deserializing shared group from a string, {}",
+                        &e
+                    ))
+                })?;
+                Ok(Self::new(label, account_id))
+            }
+            _ => Err(Error::new(&format!(
                 "invalid value for the application group: {}",
                 val
-            )),
+            ))),
         }
     }
 }
@@ -230,5 +248,7 @@ pub mod sql {
 
 pub use svc_authn::{AccountId, Authenticable};
 
+pub use self::error::Error;
+pub mod error;
 pub mod mqtt;
 pub(crate) mod serde;

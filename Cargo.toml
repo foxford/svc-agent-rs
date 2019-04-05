@@ -14,7 +14,6 @@ edition = "2018"
 travis-ci = { repository = "netology-group/svc-agent-rs" }
 
 [dependencies]
-failure = "0.1"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -22,4 +21,4 @@ base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
 rumqtt = "0.30"
 http = "0.1"
-svc-authn = "0.3"
+svc-authn = "0.4"
