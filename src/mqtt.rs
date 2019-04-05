@@ -1,9 +1,8 @@
-use failure::{err_msg, format_err, Error};
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    AccountId, Addressable, AgentId, Authenticable, Destination, EventSubscription,
+    AccountId, Addressable, AgentId, Authenticable, Destination, Error, EventSubscription,
     RequestSubscription, ResponseSubscription, SharedGroup, Source,
 };
 
@@ -76,7 +75,8 @@ impl AgentBuilder {
         config: &AgentConfig,
     ) -> Result<(Agent, rumqtt::Receiver<rumqtt::Notification>), Error> {
         let options = Self::mqtt_options(&self.mqtt_client_id(), &config)?;
-        let (tx, rx) = rumqtt::MqttClient::start(options)?;
+        let (tx, rx) = rumqtt::MqttClient::start(options)
+            .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
         let agent = Agent::new(self.agent_id, tx);
         Ok((agent, rx))
@@ -92,11 +92,14 @@ impl AgentBuilder {
     }
 
     fn mqtt_options(client_id: &str, config: &AgentConfig) -> Result<rumqtt::MqttOptions, Error> {
-        let uri = config.uri.parse::<http::Uri>()?;
-        let host = uri.host().ok_or_else(|| err_msg("missing MQTT host"))?;
+        let uri = config
+            .uri
+            .parse::<http::Uri>()
+            .map_err(|e| Error::new(&format!("error parsing MQTT connection URL, {}", e)))?;
+        let host = uri.host().ok_or_else(|| Error::new("missing MQTT host"))?;
         let port = uri
             .port_part()
-            .ok_or_else(|| err_msg("missing MQTT port"))?;
+            .ok_or_else(|| Error::new("missing MQTT port"))?;
 
         let opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16())
             .set_clean_session(config.clean_session);
@@ -129,7 +132,7 @@ impl Agent {
 
         self.tx
             .publish(topic, QoS::AtLeastOnce, false, bytes)
-            .map_err(|_| err_msg("Error publishing an MQTT message"))
+            .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
     }
 
     pub fn subscribe<S>(
@@ -146,7 +149,9 @@ impl Agent {
             topic = format!("$share/{group}/{topic}", group = group, topic = topic);
         };
 
-        self.tx.subscribe(topic, qos)?;
+        self.tx
+            .subscribe(topic, qos)
+            .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
         Ok(())
     }
 }
@@ -457,7 +462,8 @@ where
     T: serde::Serialize,
 {
     fn into_envelope(self) -> Result<compat::OutgoingEnvelope, Error> {
-        let payload = serde_json::to_string(&self.payload)?;
+        let payload = serde_json::to_string(&self.payload)
+            .map_err(|e| Error::new(&format!("error serializing payload of an envelope, {}", e)))?;
         let envelope = compat::OutgoingEnvelope::new(
             &payload,
             compat::OutgoingEnvelopeProperties::Event(self.properties),
@@ -472,7 +478,8 @@ where
     T: serde::Serialize,
 {
     fn into_envelope(self) -> Result<compat::OutgoingEnvelope, Error> {
-        let payload = serde_json::to_string(&self.payload)?;
+        let payload = serde_json::to_string(&self.payload)
+            .map_err(|e| Error::new(&format!("error serializing payload of an envelope, {}", e)))?;
         let envelope = compat::OutgoingEnvelope::new(
             &payload,
             compat::OutgoingEnvelopeProperties::Request(self.properties),
@@ -487,7 +494,8 @@ where
     T: serde::Serialize,
 {
     fn into_envelope(self) -> Result<compat::OutgoingEnvelope, Error> {
-        let payload = serde_json::to_string(&self.payload)?;
+        let payload = serde_json::to_string(&self.payload)
+            .map_err(|e| Error::new(&format!("error serializing payload of an envelope, {}", e)))?;
         let envelope = compat::OutgoingEnvelope::new(
             &payload,
             compat::OutgoingEnvelopeProperties::Response(self.properties),
@@ -566,10 +574,10 @@ impl DestinationTopic for OutgoingEventProperties {
                 app = me.as_account_id(),
                 uri = uri,
             )),
-            _ => Err(format_err!(
+            _ => Err(Error::new(&format!(
                 "destination = '{:?}' is incompatible with event message type",
                 dest,
-            )),
+            ))),
         }
     }
 }
@@ -590,10 +598,10 @@ impl DestinationTopic for OutgoingRequestProperties {
                 agent_id = me.as_agent_id(),
                 app = account_id,
             )),
-            _ => Err(format_err!(
+            _ => Err(Error::new(&format!(
                 "destination = '{:?}' is incompatible with request message type",
                 dest,
-            )),
+            ))),
         }
     }
 }
@@ -611,10 +619,10 @@ impl DestinationTopic for OutgoingResponseProperties {
                     agent_id = agent_id,
                     app = me.as_account_id(),
                 )),
-                _ => Err(format_err!(
+                _ => Err(Error::new(&format!(
                     "destination = '{:?}' is incompatible with response message type",
                     dest,
-                )),
+                ))),
             },
         }
     }
@@ -639,10 +647,10 @@ impl<'a> SubscriptionTopic for EventSubscription<'a> {
                 app = from_account_id,
                 uri = uri,
             )),
-            _ => Err(format_err!(
+            _ => Err(Error::new(&format!(
                 "source = '{:?}' is incompatible with event subscription",
                 self.source,
-            )),
+            ))),
         }
     }
 }
@@ -666,10 +674,10 @@ impl<'a> SubscriptionTopic for RequestSubscription<'a> {
                 "agents/{agent_id}/api/v1/in/+",
                 agent_id = me.as_agent_id(),
             )),
-            _ => Err(format_err!(
+            _ => Err(Error::new(&format!(
                 "source = '{:?}' is incompatible with request subscription",
                 self.source,
-            )),
+            ))),
         }
     }
 }
@@ -689,10 +697,10 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
                 "agents/{agent_id}/api/v1/in/+",
                 agent_id = me.as_agent_id(),
             )),
-            _ => Err(format_err!(
+            _ => Err(Error::new(&format!(
                 "source = '{:?}' is incompatible with response subscription",
                 self.source,
-            )),
+            ))),
         }
     }
 }
@@ -701,6 +709,8 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
 
 pub mod compat {
 
+    use serde_derive::{Deserialize, Serialize};
+
     use super::{
         Destination, DestinationTopic, IncomingEvent, IncomingEventProperties, IncomingMessage,
         IncomingRequest, IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
@@ -708,8 +718,7 @@ pub mod compat {
         Publishable,
     };
     use crate::Addressable;
-    use failure::{err_msg, format_err, Error};
-    use serde_derive::{Deserialize, Serialize};
+    use crate::Error;
 
     ////////////////////////////////////////////////////////////////////////////////
 
@@ -737,7 +746,12 @@ pub mod compat {
         where
             T: serde::de::DeserializeOwned,
         {
-            let payload = serde_json::from_str::<T>(&self.payload)?;
+            let payload = serde_json::from_str::<T>(&self.payload).map_err(|e| {
+                Error::new(&format!(
+                    "error deserializing payload of an envelope, {}",
+                    &e
+                ))
+            })?;
             Ok(payload)
         }
     }
@@ -749,7 +763,7 @@ pub mod compat {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
             IncomingEnvelopeProperties::Event(props) => Ok(IncomingMessage::new(payload, props)),
-            val => Err(format_err!("error converting into event = {:?}", val)),
+            _ => Err(Error::new("error serializing an envelope into event")),
         }
     }
 
@@ -760,7 +774,7 @@ pub mod compat {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
             IncomingEnvelopeProperties::Request(props) => Ok(IncomingMessage::new(payload, props)),
-            _ => Err(err_msg("Error converting into request")),
+            _ => Err(Error::new("error serializing an envelope into request")),
         }
     }
 
@@ -771,7 +785,7 @@ pub mod compat {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
             IncomingEnvelopeProperties::Response(props) => Ok(IncomingMessage::new(payload, props)),
-            _ => Err(err_msg("error converting into response")),
+            _ => Err(Error::new("error serializing an envelope into response")),
         }
     }
 
@@ -830,7 +844,9 @@ pub mod compat {
         }
 
         fn to_bytes(&self) -> Result<String, Error> {
-            Ok(serde_json::to_string(&self)?)
+            Ok(serde_json::to_string(&self).map_err(|e| {
+                Error::new(&format!("error serializing an envelope to bytes, {}", &e))
+            })?)
         }
     }
 
