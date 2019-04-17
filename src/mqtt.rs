@@ -215,7 +215,11 @@ impl IncomingRequestProperties {
         &self.method
     }
 
-    pub fn to_response(&self, status: OutgoingResponseStatus) -> OutgoingResponseProperties {
+    pub fn correlation_data(&self) -> &str {
+        &self.correlation_data
+    }
+
+    pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
         OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
     }
 }
@@ -234,12 +238,18 @@ impl Addressable for IncomingRequestProperties {
 
 #[derive(Debug, Deserialize)]
 pub struct IncomingResponseProperties {
+    #[serde(with = "crate::serde::HttpStatusCodeRef")]
+    status: ResponseStatus,
     correlation_data: String,
     #[serde(flatten)]
     authn: AuthnProperties,
 }
 
 impl IncomingResponseProperties {
+    pub fn status(&self) -> ResponseStatus {
+        self.status
+    }
+
     pub fn correlation_data(&self) -> &str {
         &self.correlation_data
     }
@@ -289,7 +299,7 @@ where
 }
 
 impl<T> IncomingRequest<T> {
-    pub fn to_response<R>(&self, data: R, status: OutgoingResponseStatus) -> OutgoingResponse<R>
+    pub fn to_response<R>(&self, data: R, status: ResponseStatus) -> OutgoingResponse<R>
     where
         R: serde::Serialize,
     {
@@ -350,7 +360,7 @@ impl OutgoingRequestProperties {
 #[derive(Debug, Serialize)]
 pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
-    status: OutgoingResponseStatus,
+    status: ResponseStatus,
     correlation_data: String,
     #[serde(skip)]
     response_topic: Option<String>,
@@ -358,7 +368,7 @@ pub struct OutgoingResponseProperties {
 
 impl OutgoingResponseProperties {
     pub fn new(
-        status: OutgoingResponseStatus,
+        status: ResponseStatus,
         correlation_data: &str,
         response_topic: Option<&str>,
     ) -> Self {
@@ -370,7 +380,12 @@ impl OutgoingResponseProperties {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated(note = "please use 'ResponseStatus' type instead")]
 pub type OutgoingResponseStatus = http::StatusCode;
+
+pub type ResponseStatus = http::StatusCode;
 
 ////////////////////////////////////////////////////////////////////////////////
 

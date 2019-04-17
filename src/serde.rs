@@ -1,14 +1,20 @@
 use serde::{de, ser};
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{mqtt::AuthnProperties, AccountId, Addressable, AgentId, Authenticable, SharedGroup};
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(remote = "http::StatusCode")]
 pub(crate) struct HttpStatusCodeRef(#[serde(getter = "http::StatusCode::as_u16")] u16);
+
+impl From<HttpStatusCodeRef> for http::StatusCode {
+    fn from(value: HttpStatusCodeRef) -> http::StatusCode {
+        http::StatusCode::from_u16(value.0).unwrap()
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
