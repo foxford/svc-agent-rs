@@ -141,7 +141,7 @@ pub enum Source<'a> {
     // <- event(any-from-app): apps/ACCOUNT_ID/api/v1/BROADCAST_URI
     Broadcast(&'a AccountId, &'a str),
     // <- request(app-from-any): agents/+/api/v1/out/ACCOUNT_ID(ME)
-    Multicast,
+    Multicast(Option<&'a AgentId>),
     // <- request(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
     // <- request(one-from-any): agents/AGENT_ID(ME)/api/v1/in/+
     // <- response(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
@@ -162,21 +162,36 @@ impl Subscription {
     }
 
     pub fn multicast_requests<'a>() -> RequestSubscription<'a> {
-        RequestSubscription::new(Source::Multicast)
+        RequestSubscription::new(Source::Multicast(None))
     }
 
-    pub fn unicast_requests<A>(from: Option<&A>) -> RequestSubscription
+    pub fn multicast_requests_from<A>(from: &A) -> RequestSubscription
+    where
+        A: Addressable,
+    {
+        RequestSubscription::new(Source::Multicast(Some(from.as_agent_id())))
+    }
+
+    pub fn unicast_requests<'a>() -> RequestSubscription<'a> {
+        RequestSubscription::new(Source::Unicast(None))
+    }
+
+    pub fn unicast_requests_from<A>(from: &A) -> RequestSubscription
     where
         A: Authenticable,
     {
-        RequestSubscription::new(Source::Unicast(from.map(|val| val.as_account_id())))
+        RequestSubscription::new(Source::Unicast(Some(from.as_account_id())))
     }
 
-    pub fn unicast_responses<A>(from: Option<&A>) -> ResponseSubscription
+    pub fn unicast_responses<'a>() -> ResponseSubscription<'a> {
+        ResponseSubscription::new(Source::Unicast(None))
+    }
+
+    pub fn unicast_responses_from<A>(from: &A) -> ResponseSubscription
     where
         A: Authenticable,
     {
-        ResponseSubscription::new(Source::Unicast(from.map(|val| val.as_account_id())))
+        ResponseSubscription::new(Source::Unicast(Some(from.as_account_id())))
     }
 }
 

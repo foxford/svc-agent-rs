@@ -676,7 +676,12 @@ impl<'a> SubscriptionTopic for RequestSubscription<'a> {
         A: Addressable,
     {
         match self.source {
-            Source::Multicast => Ok(format!(
+            Source::Multicast(Some(ref from_agent_id)) => Ok(format!(
+                "agents/{agent_id}/api/v1/out/{app}",
+                agent_id = from_agent_id,
+                app = me.as_account_id(),
+            )),
+            Source::Multicast(None) => Ok(format!(
                 "agents/+/api/v1/out/{app}",
                 app = me.as_account_id(),
             )),
