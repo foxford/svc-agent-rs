@@ -375,7 +375,7 @@ impl OutgoingResponseProperties {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
-            response_topic: response_topic.map(|val| val.to_owned()),
+            response_topic: response_topic.map(ToOwned::to_owned),
         }
     }
 }
