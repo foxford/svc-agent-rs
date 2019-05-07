@@ -148,9 +148,10 @@ impl Agent {
     {
         let topic = message.destination_topic(&self.id)?;
         let bytes = message.to_bytes()?;
+        let qos = message.qos();
 
         self.tx
-            .publish(topic, QoS::AtLeastOnce, false, bytes)
+            .publish(topic, qos, false, bytes)
             .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
     }
 
@@ -544,6 +545,7 @@ pub trait Publishable {
         A: Addressable;
 
     fn to_bytes(&self) -> Result<String, Error>;
+    fn qos(&self) -> QoS;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -751,7 +753,7 @@ pub mod compat {
         Destination, DestinationTopic, IncomingEvent, IncomingEventProperties, IncomingMessage,
         IncomingRequest, IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
         OutgoingEventProperties, OutgoingRequestProperties, OutgoingResponseProperties,
-        Publishable,
+        Publishable, QoS,
     };
     use crate::Addressable;
     use crate::Error;
@@ -883,6 +885,14 @@ pub mod compat {
             Ok(serde_json::to_string(&self).map_err(|e| {
                 Error::new(&format!("error serializing an envelope to bytes, {}", &e))
             })?)
+        }
+
+        fn qos(&self) -> QoS {
+            match self.properties {
+                OutgoingEnvelopeProperties::Event(_) => QoS::AtLeastOnce,
+                OutgoingEnvelopeProperties::Request(_) => QoS::AtMostOnce,
+                OutgoingEnvelopeProperties::Response(_) => QoS::AtLeastOnce,
+            }
         }
     }
 
