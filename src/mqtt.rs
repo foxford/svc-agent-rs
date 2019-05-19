@@ -427,6 +427,10 @@ where
             destination,
         }
     }
+
+    pub fn properties(&self) -> &P {
+        &self.properties
+    }
 }
 
 impl<T> OutgoingEvent<T>
