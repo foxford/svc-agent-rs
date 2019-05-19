@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.1 (May 18, 2019)
+
+### Features
+-  Add `properties` function to `OutgoingMessage` ([0a9d445](https://github.com/netology-group/svc-agent-rs/commit/0a9d445ba5eaadb740907583e5d5b35059ad3cd8))
+
+
+
 ## v0.6.0 (May 7, 2019)
 
 ### Changes
