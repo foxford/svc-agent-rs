@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.0 (June 3, 2019)
+
+### Changes
+- Change default connection version to `v1` ([1a6eb4f](https://github.com/netology-group/svc-agent-rs/commit/1a6eb4f0adca9212daf29b7283cfb6267d7cffc6))
+
+
+
 ## v0.6.1 (May 18, 2019)
 
 ### Features
