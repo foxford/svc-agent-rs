@@ -52,7 +52,7 @@ impl AgentBuilder {
     pub fn new(agent_id: AgentId) -> Self {
         Self {
             agent_id,
-            version: String::from("v1.mqtt3"),
+            version: String::from("v1"),
             mode: ConnectionMode::Default,
         }
     }
