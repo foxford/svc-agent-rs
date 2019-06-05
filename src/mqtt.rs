@@ -31,7 +31,7 @@ impl fmt::Display for ConnectionMode {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct AgentConfig {
     uri: String,
     clean_session: Option<bool>,
@@ -39,6 +39,20 @@ pub struct AgentConfig {
     reconnect_interval: Option<u64>,
     outgoing_message_queue_size: Option<usize>,
     incomming_message_queue_size: Option<usize>,
+    username: Option<String>,
+    password: Option<String>,
+}
+
+impl AgentConfig {
+    pub fn set_username(&mut self, value: &str) -> &mut Self {
+        self.username = Some(value.to_owned());
+        self
+    }
+
+    pub fn set_password(&mut self, value: &str) -> &mut Self {
+        self.password = Some(value.to_owned());
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -121,6 +135,18 @@ impl AgentBuilder {
         opts = match config.outgoing_message_queue_size {
             Some(value) => opts.set_outgoing_queuelimit(value, std::time::Duration::from_secs(5)),
             _ => opts,
+        };
+        opts = match (&config.username, &config.password) {
+            (Some(ref u), Some(ref p)) => opts.set_security_opts(
+                rumqtt::SecurityOptions::UsernamePassword(u.to_owned(), p.to_owned()),
+            ),
+            (Some(ref u), None) => opts.set_security_opts(
+                rumqtt::SecurityOptions::UsernamePassword(u.to_owned(), String::from("")),
+            ),
+            (None, Some(ref p)) => opts.set_security_opts(
+                rumqtt::SecurityOptions::UsernamePassword(String::from(""), p.to_owned()),
+            ),
+            (None, None) => opts,
         };
 
         Ok(opts)

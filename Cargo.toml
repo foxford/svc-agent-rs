@@ -21,4 +21,4 @@ base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
 rumqtt = "0.30"
 http = "0.1"
-svc-authn = "0.4"
+svc-authn = "0.5"
