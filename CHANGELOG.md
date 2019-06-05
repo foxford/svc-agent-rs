@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.1 (June 5, 2019)
+
+### Features
+- Add passord and username to the configuration ([0d80f45](https://github.com/netology-group/svc-agent-rs/commit/0d80f45b031fcfc615111fe35495a56b7356ce9f))
+
+
+
 ## v0.7.0 (June 3, 2019)
 
 ### Changes
