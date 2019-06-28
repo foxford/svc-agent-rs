@@ -267,6 +267,10 @@ impl IncomingRequestProperties {
         &self.correlation_data
     }
 
+    pub fn response_topic(&self) -> &str {
+        &self.response_topic
+    }
+
     pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
         OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
     }
