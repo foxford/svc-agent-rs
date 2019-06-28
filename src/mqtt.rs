@@ -12,6 +12,7 @@ use crate::{
 pub enum ConnectionMode {
     Default,
     Service,
+    Observer,
     Bridge,
 }
 
@@ -23,6 +24,7 @@ impl fmt::Display for ConnectionMode {
             match self {
                 ConnectionMode::Default => "agents",
                 ConnectionMode::Service => "service-agents",
+                ConnectionMode::Observer => "observer-agents",
                 ConnectionMode::Bridge => "bridge-agents",
             }
         )
