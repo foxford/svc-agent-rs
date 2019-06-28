@@ -2,7 +2,10 @@ use serde::{de, ser};
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::{mqtt::AuthnProperties, AccountId, Addressable, AgentId, Authenticable, SharedGroup};
+use crate::{
+    mqtt::AuthnProperties, mqtt::Connection, mqtt::ConnectionMode, AccountId, Addressable, AgentId,
+    Authenticable, SharedGroup,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,6 +96,57 @@ impl<'de> de::Deserialize<'de> for SharedGroup {
         }
 
         deserializer.deserialize_str(SharedGroupVisitor)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+impl ser::Serialize for ConnectionMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> de::Deserialize<'de> for ConnectionMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct ConnectionModeVisitor;
+
+        impl<'de> de::Visitor<'de> for ConnectionModeVisitor {
+            type Value = ConnectionMode;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("enum ConnectionMode")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                use std::str::FromStr;
+
+                ConnectionMode::from_str(v)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        deserializer.deserialize_str(ConnectionModeVisitor)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+impl ser::Serialize for Connection {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

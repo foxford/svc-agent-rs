@@ -1,35 +1,11 @@
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 
 use crate::{
     AccountId, Addressable, AgentId, Authenticable, Destination, Error, EventSubscription,
     RequestSubscription, ResponseSubscription, SharedGroup, Source,
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug)]
-pub enum ConnectionMode {
-    Default,
-    Service,
-    Observer,
-    Bridge,
-}
-
-impl fmt::Display for ConnectionMode {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            fmt,
-            "{}",
-            match self {
-                ConnectionMode::Default => "agents",
-                ConnectionMode::Service => "service-agents",
-                ConnectionMode::Observer => "observer-agents",
-                ConnectionMode::Bridge => "bridge-agents",
-            }
-        )
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -59,50 +35,42 @@ impl AgentConfig {
 
 #[derive(Debug)]
 pub struct AgentBuilder {
-    agent_id: AgentId,
-    version: String,
-    mode: ConnectionMode,
+    connection: Connection,
 }
 
 impl AgentBuilder {
     pub fn new(agent_id: AgentId) -> Self {
         Self {
-            agent_id,
-            version: String::from("v1"),
-            mode: ConnectionMode::Default,
+            connection: Connection::new(agent_id),
         }
     }
 
     pub fn version(self, version: &str) -> Self {
+        let mut connection = self.connection;
+        connection.set_version(version);
         Self {
-            version: version.to_owned(),
-            ..self
+            connection: connection,
         }
     }
 
     pub fn mode(self, mode: ConnectionMode) -> Self {
-        Self { mode, ..self }
+        let mut connection = self.connection;
+        connection.set_mode(mode);
+        Self {
+            connection: connection,
+        }
     }
 
     pub fn start(
         self,
         config: &AgentConfig,
     ) -> Result<(Agent, rumqtt::Receiver<rumqtt::Notification>), Error> {
-        let options = Self::mqtt_options(&self.mqtt_client_id(), &config)?;
+        let options = Self::mqtt_options(&self.connection.to_string(), &config)?;
         let (tx, rx) = rumqtt::MqttClient::start(options)
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
-        let agent = Agent::new(self.agent_id, tx);
+        let agent = Agent::new(self.connection.agent_id, tx);
         Ok((agent, rx))
-    }
-
-    fn mqtt_client_id(&self) -> String {
-        format!(
-            "{version}/{mode}/{agent_id}",
-            version = self.version,
-            mode = self.mode,
-            agent_id = self.agent_id,
-        )
     }
 
     fn mqtt_options(client_id: &str, config: &AgentConfig) -> Result<rumqtt::MqttOptions, Error> {
@@ -207,6 +175,116 @@ impl Agent {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
+pub enum ConnectionMode {
+    Default,
+    Service,
+    Observer,
+    Bridge,
+}
+
+impl fmt::Display for ConnectionMode {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            fmt,
+            "{}",
+            match self {
+                ConnectionMode::Default => "agents",
+                ConnectionMode::Service => "service-agents",
+                ConnectionMode::Observer => "observer-agents",
+                ConnectionMode::Bridge => "bridge-agents",
+            }
+        )
+    }
+}
+
+impl FromStr for ConnectionMode {
+    type Err = Error;
+
+    fn from_str(val: &str) -> Result<Self, Self::Err> {
+        match val {
+            "agents" => Ok(ConnectionMode::Default),
+            "service-agents" => Ok(ConnectionMode::Service),
+            "observer-agents" => Ok(ConnectionMode::Observer),
+            "bridge-agents" => Ok(ConnectionMode::Bridge),
+            _ => Err(Error::new(&format!(
+                "invalid value for the connection mode: {}",
+                val
+            ))),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone)]
+pub struct Connection {
+    agent_id: AgentId,
+    version: String,
+    mode: ConnectionMode,
+}
+
+impl Connection {
+    fn new(agent_id: AgentId) -> Self {
+        Self {
+            agent_id,
+            version: String::from("v1"),
+            mode: ConnectionMode::Default,
+        }
+    }
+
+    fn set_version(&mut self, value: &str) -> &mut Self {
+        self.version = value.to_owned();
+        self
+    }
+
+    fn set_mode(&mut self, value: ConnectionMode) -> &mut Self {
+        self.mode = value;
+        self
+    }
+}
+
+impl fmt::Display for Connection {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}/{}/{}", self.version, self.mode, self.agent_id,)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConnectionProperties {
+    #[serde(flatten)]
+    authn: AuthnProperties,
+    #[serde(rename = "connection_version")]
+    version: String,
+    #[serde(rename = "connection_mode")]
+    mode: ConnectionMode,
+}
+
+impl ConnectionProperties {
+    fn to_connection(&self) -> Connection {
+        let mut connection = Connection::new(self.authn.as_agent_id().clone());
+        connection.set_version(&self.version);
+        connection.set_mode(self.mode.clone());
+        connection
+    }
+}
+
+impl Authenticable for ConnectionProperties {
+    fn as_account_id(&self) -> &AccountId {
+        &self.authn.as_account_id()
+    }
+}
+
+impl Addressable for ConnectionProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        &self.authn.as_agent_id()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone)]
 pub struct AuthnProperties {
     agent_id: AgentId,
 }
@@ -234,18 +312,24 @@ impl From<AgentId> for AuthnProperties {
 #[derive(Debug, Deserialize)]
 pub struct IncomingEventProperties {
     #[serde(flatten)]
-    authn: AuthnProperties,
+    conn: ConnectionProperties,
+}
+
+impl IncomingEventProperties {
+    pub fn to_connection(&self) -> Connection {
+        self.conn.to_connection()
+    }
 }
 
 impl Authenticable for IncomingEventProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.authn.as_account_id()
+        &self.conn.as_account_id()
     }
 }
 
 impl Addressable for IncomingEventProperties {
     fn as_agent_id(&self) -> &AgentId {
-        &self.authn.as_agent_id()
+        &self.conn.as_agent_id()
     }
 }
 
@@ -255,7 +339,7 @@ pub struct IncomingRequestProperties {
     correlation_data: String,
     response_topic: String,
     #[serde(flatten)]
-    authn: AuthnProperties,
+    conn: ConnectionProperties,
 }
 
 impl IncomingRequestProperties {
@@ -271,6 +355,10 @@ impl IncomingRequestProperties {
         &self.response_topic
     }
 
+    pub fn to_connection(&self) -> Connection {
+        self.conn.to_connection()
+    }
+
     pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
         OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
     }
@@ -278,13 +366,13 @@ impl IncomingRequestProperties {
 
 impl Authenticable for IncomingRequestProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.authn.as_account_id()
+        &self.conn.as_account_id()
     }
 }
 
 impl Addressable for IncomingRequestProperties {
     fn as_agent_id(&self) -> &AgentId {
-        &self.authn.as_agent_id()
+        &self.conn.as_agent_id()
     }
 }
 
@@ -294,7 +382,7 @@ pub struct IncomingResponseProperties {
     status: ResponseStatus,
     correlation_data: String,
     #[serde(flatten)]
-    authn: AuthnProperties,
+    conn: ConnectionProperties,
 }
 
 impl IncomingResponseProperties {
@@ -305,17 +393,21 @@ impl IncomingResponseProperties {
     pub fn correlation_data(&self) -> &str {
         &self.correlation_data
     }
+
+    pub fn to_connection(&self) -> Connection {
+        self.conn.to_connection()
+    }
 }
 
 impl Authenticable for IncomingResponseProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.authn.as_account_id()
+        &self.conn.as_account_id()
     }
 }
 
 impl Addressable for IncomingResponseProperties {
     fn as_agent_id(&self) -> &AgentId {
-        &self.authn.as_agent_id()
+        &self.conn.as_agent_id()
     }
 }
 
