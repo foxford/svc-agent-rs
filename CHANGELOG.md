@@ -1,9 +1,17 @@
 # Changelog
 
+## v0.7.2 (June 28, 2019)
+
+### Features
+- Add connection type and incoming message properties ([d65bda8](https://github.com/netology-group/svc-agent-rs/commit/d65bda8135d352d52d55a45cf87be6cbf73cfa79))
+- Add support for observer mode ([65f12fa](https://github.com/netology-group/svc-agent-rs/commit/65f12faf2cade018a06ab61f8252c16a9943a571))
+
+
+
 ## v0.7.1 (June 5, 2019)
 
 ### Features
-- Add passord and username to the configuration ([0d80f45](https://github.com/netology-group/svc-agent-rs/commit/0d80f45b031fcfc615111fe35495a56b7356ce9f))
+- Add password and username to the configuration ([0d80f45](https://github.com/netology-group/svc-agent-rs/commit/0d80f45b031fcfc615111fe35495a56b7356ce9f))
 
 
 
