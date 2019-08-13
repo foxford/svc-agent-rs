@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.3 (August 14, 2019)
+
+### Changes
+- Serialize `status` as string for MQTT v5 user properties compatibility ([3fb1d31](https://github.com/netology-group/svc-agent-rs/commit/3fb1d31c69387eb34f6e748fb221c684272e929a))
+
 ## v0.7.2 (June 28, 2019)
 
 ### Features
