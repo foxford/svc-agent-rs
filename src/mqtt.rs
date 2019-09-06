@@ -675,12 +675,11 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Publishable {
-    fn destination_topic<A>(&self, me: &A) -> Result<String, Error>
-    where
-        A: Addressable;
-
-    fn to_bytes(&self) -> Result<String, Error>;
+    fn message_type(&self) -> &'static str;
+    fn destination(&self) -> &Destination;
     fn qos(&self) -> QoS;
+    fn response_topic(&self) -> Option<&str>;
+    fn to_bytes(&self) -> Result<String, Error>;
 }
 
 impl<'a, T, P> Publishable for OutgoingMessage<T, P>
@@ -689,8 +688,20 @@ where
     P: OutgoingProperties,
     OutgoingMessage<T, P>: Clone + compat::IntoEnvelope,
 {
-    fn destination_topic<A: Addressable>(&self, me: &A) -> Result<String, Error> {
-        self.properties.destination_topic(me, &self.destination)
+    fn message_type(&self) -> &'static str {
+        self.properties.message_type()
+    }
+
+    fn destination(&self) -> &Destination {
+        &self.destination
+    }
+
+    fn qos(&self) -> QoS {
+        self.properties.qos()
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        self.properties.response_topic()
     }
 
     fn to_bytes(&self) -> Result<String, Error> {
@@ -701,106 +712,118 @@ where
         Ok(serde_json::to_string(&envelope)
             .map_err(|e| Error::new(&format!("error serializing an envelope to bytes, {}", &e)))?)
     }
-
-    fn qos(&self) -> QoS {
-        self.properties.qos()
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait DestinationTopic {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable;
+    fn destination_topic(
+        &self,
+        dest: &Destination,
+        message_type: &'static str,
+    ) -> Result<String, Error>;
 }
 
-impl DestinationTopic for OutgoingEventProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match dest {
-            Destination::Broadcast(ref uri) => Ok(format!(
-                "apps/{app}/api/v1/{uri}",
-                app = me.as_account_id(),
-                uri = uri,
-            )),
-            _ => Err(Error::new(&format!(
-                "destination = '{:?}' is incompatible with event message type",
-                dest,
-            ))),
-        }
-    }
-}
-
-impl DestinationTopic for OutgoingRequestProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match dest {
-            Destination::Unicast(ref agent_id) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/{app}",
-                agent_id = agent_id,
-                app = me.as_account_id(),
-            )),
-            Destination::Multicast(ref account_id) => Ok(format!(
-                "agents/{agent_id}/api/v1/out/{app}",
-                agent_id = me.as_agent_id(),
-                app = account_id,
-            )),
-            _ => Err(Error::new(&format!(
-                "destination = '{:?}' is incompatible with request message type",
-                dest,
-            ))),
-        }
-    }
-}
-
-impl DestinationTopic for OutgoingResponseProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match &self.response_topic {
-            Some(ref val) => Ok(val.to_owned()),
-            None => match dest {
+impl DestinationTopic for AgentId {
+    fn destination_topic(
+        &self,
+        dest: &Destination,
+        message_type: &'static str,
+    ) -> Result<String, Error> {
+        match message_type {
+            "event" => match dest {
+                Destination::Broadcast(ref uri) => Ok(format!(
+                    "apps/{app}/api/v1/{uri}",
+                    app = self.as_account_id(),
+                    uri = uri,
+                )),
+                _ => Err(Error::new(&format!(
+                    "destination = '{:?}' is incompatible with event message type",
+                    dest,
+                ))),
+            },
+            "request" => match dest {
                 Destination::Unicast(ref agent_id) => Ok(format!(
                     "agents/{agent_id}/api/v1/in/{app}",
                     agent_id = agent_id,
-                    app = me.as_account_id(),
+                    app = self.as_account_id(),
+                )),
+                Destination::Multicast(ref account_id) => Ok(format!(
+                    "agents/{agent_id}/api/v1/out/{app}",
+                    agent_id = self,
+                    app = account_id,
+                )),
+                _ => Err(Error::new(&format!(
+                    "destination = '{:?}' is incompatible with request message type",
+                    dest,
+                ))),
+            },
+            "response" => match dest {
+                Destination::Unicast(ref agent_id) => Ok(format!(
+                    "agents/{agent_id}/api/v1/in/{app}",
+                    agent_id = agent_id,
+                    app = self.as_account_id(),
                 )),
                 _ => Err(Error::new(&format!(
                     "destination = '{:?}' is incompatible with response message type",
                     dest,
                 ))),
             },
+            _ => Err(Error::new(&format!(
+                "Unknown message type: '{}'",
+                message_type
+            ))),
         }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-pub trait OutgoingProperties: DestinationTopic {
+pub trait OutgoingProperties {
+    fn message_type(&self) -> &'static str;
     fn qos(&self) -> QoS;
+    fn response_topic(&self) -> Option<&str>;
 }
 
 impl OutgoingProperties for OutgoingEventProperties {
+    fn message_type(&self) -> &'static str {
+        "event"
+    }
+
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        None
     }
 }
 
 impl OutgoingProperties for OutgoingRequestProperties {
+    fn message_type(&self) -> &'static str {
+        "request"
+    }
+
     fn qos(&self) -> QoS {
         QoS::AtMostOnce
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        None
     }
 }
 
 impl OutgoingProperties for OutgoingResponseProperties {
+    fn message_type(&self) -> &'static str {
+        "response"
+    }
+
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        self.response_topic.as_ref().map(String::as_str)
     }
 }
 
@@ -892,11 +915,10 @@ pub mod compat {
     use serde_derive::{Deserialize, Serialize};
 
     use super::{
-        Destination, DestinationTopic, IncomingEvent, IncomingEventProperties, IncomingMessage,
-        IncomingRequest, IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
+        Destination, IncomingEvent, IncomingEventProperties, IncomingMessage, IncomingRequest,
+        IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
         OutgoingEventProperties, OutgoingRequestProperties, OutgoingResponseProperties,
     };
-    use crate::Addressable;
     use crate::Error;
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -997,19 +1019,6 @@ pub mod compat {
                 payload: payload.to_owned(),
                 properties,
                 destination,
-            }
-        }
-    }
-
-    impl DestinationTopic for OutgoingEnvelopeProperties {
-        fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-        where
-            A: Addressable,
-        {
-            match self {
-                OutgoingEnvelopeProperties::Event(val) => val.destination_topic(me, dest),
-                OutgoingEnvelopeProperties::Request(val) => val.destination_topic(me, dest),
-                OutgoingEnvelopeProperties::Response(val) => val.destination_topic(me, dest),
             }
         }
     }
