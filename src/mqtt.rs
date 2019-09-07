@@ -139,14 +139,8 @@ impl Agent {
     }
 
     pub fn publish(&mut self, message: &Box<dyn Publishable>) -> Result<(), Error> {
-        let type_and_response_topic = (message.message_type(), message.response_topic());
-
-        let topic = if let ("response", Some(response_topic)) = type_and_response_topic {
-            response_topic.to_owned()
-        } else {
-            self.id
-                .destination_topic(&message.destination(), message.message_type())?
-        };
+        let topic = self.id
+            .destination_topic(&message.destination(), message.message_type())?;
 
         let bytes = message.to_bytes()?;
         let qos = message.qos();
@@ -365,7 +359,7 @@ impl IncomingRequestProperties {
     }
 
     pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
-        OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
+        OutgoingResponseProperties::new(status, &self.correlation_data)
     }
 }
 
@@ -511,20 +505,16 @@ pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
     correlation_data: String,
-    #[serde(skip)]
-    response_topic: Option<String>,
 }
 
 impl OutgoingResponseProperties {
     pub fn new(
         status: ResponseStatus,
         correlation_data: &str,
-        response_topic: Option<&str>,
     ) -> Self {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
-            response_topic: response_topic.map(ToOwned::to_owned),
         }
     }
 }
@@ -678,7 +668,6 @@ pub trait Publishable {
     fn message_type(&self) -> &'static str;
     fn destination(&self) -> &Destination;
     fn qos(&self) -> QoS;
-    fn response_topic(&self) -> Option<&str>;
     fn to_bytes(&self) -> Result<String, Error>;
 }
 
@@ -698,10 +687,6 @@ where
 
     fn qos(&self) -> QoS {
         self.properties.qos()
-    }
-
-    fn response_topic(&self) -> Option<&str> {
-        self.properties.response_topic()
     }
 
     fn to_bytes(&self) -> Result<String, Error> {
@@ -782,7 +767,6 @@ impl DestinationTopic for AgentId {
 pub trait OutgoingProperties {
     fn message_type(&self) -> &'static str;
     fn qos(&self) -> QoS;
-    fn response_topic(&self) -> Option<&str>;
 }
 
 impl OutgoingProperties for OutgoingEventProperties {
@@ -792,10 +776,6 @@ impl OutgoingProperties for OutgoingEventProperties {
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
-    }
-
-    fn response_topic(&self) -> Option<&str> {
-        None
     }
 }
 
@@ -807,10 +787,6 @@ impl OutgoingProperties for OutgoingRequestProperties {
     fn qos(&self) -> QoS {
         QoS::AtMostOnce
     }
-
-    fn response_topic(&self) -> Option<&str> {
-        None
-    }
 }
 
 impl OutgoingProperties for OutgoingResponseProperties {
@@ -820,10 +796,6 @@ impl OutgoingProperties for OutgoingResponseProperties {
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
-    }
-
-    fn response_topic(&self) -> Option<&str> {
-        self.response_topic.as_ref().map(String::as_str)
     }
 }
 
