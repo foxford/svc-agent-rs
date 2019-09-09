@@ -138,12 +138,10 @@ impl Agent {
         &self.id
     }
 
-    pub fn publish(&mut self, message: &Box<dyn Publishable>) -> Result<(), Error> {
-        let topic = self.id
-            .destination_topic(&message.destination(), message.message_type())?;
-
-        let bytes = message.to_bytes()?;
+    pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
+        let topic = self.id.destination_topic(&message)?;
         let qos = message.qos();
+        let bytes = message.into_bytes()?;
 
         self.tx
             .publish(topic, qos, false, bytes)
@@ -508,10 +506,7 @@ pub struct OutgoingResponseProperties {
 }
 
 impl OutgoingResponseProperties {
-    pub fn new(
-        status: ResponseStatus,
-        correlation_data: &str,
-    ) -> Self {
+    pub fn new(status: ResponseStatus, correlation_data: &str) -> Self {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
@@ -668,14 +663,14 @@ pub trait Publishable {
     fn message_type(&self) -> &'static str;
     fn destination(&self) -> &Destination;
     fn qos(&self) -> QoS;
-    fn to_bytes(&self) -> Result<String, Error>;
+    fn into_bytes(self: Box<Self>) -> Result<String, Error>;
 }
 
-impl<'a, T, P> Publishable for OutgoingMessage<T, P>
+impl<T, P> Publishable for OutgoingMessage<T, P>
 where
     T: serde::Serialize,
     P: OutgoingProperties,
-    OutgoingMessage<T, P>: Clone + compat::IntoEnvelope,
+    OutgoingMessage<T, P>: compat::IntoEnvelope,
 {
     fn message_type(&self) -> &'static str {
         self.properties.message_type()
@@ -689,10 +684,10 @@ where
         self.properties.qos()
     }
 
-    fn to_bytes(&self) -> Result<String, Error> {
+    fn into_bytes(self: Box<Self>) -> Result<String, Error> {
         use compat::IntoEnvelope;
 
-        let envelope = (*self).clone().into_envelope()?;
+        let envelope = self.into_envelope()?;
 
         Ok(serde_json::to_string(&envelope)
             .map_err(|e| Error::new(&format!("error serializing an envelope to bytes, {}", &e)))?)
@@ -702,20 +697,14 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait DestinationTopic {
-    fn destination_topic(
-        &self,
-        dest: &Destination,
-        message_type: &'static str,
-    ) -> Result<String, Error>;
+    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error>;
 }
 
 impl DestinationTopic for AgentId {
-    fn destination_topic(
-        &self,
-        dest: &Destination,
-        message_type: &'static str,
-    ) -> Result<String, Error> {
-        match message_type {
+    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error> {
+        let dest = message.destination();
+
+        match message.message_type() {
             "event" => match dest {
                 Destination::Broadcast(ref uri) => Ok(format!(
                     "apps/{app}/api/v1/{uri}",
@@ -754,7 +743,7 @@ impl DestinationTopic for AgentId {
                     dest,
                 ))),
             },
-            _ => Err(Error::new(&format!(
+            message_type => Err(Error::new(&format!(
                 "Unknown message type: '{}'",
                 message_type
             ))),
