@@ -138,13 +138,10 @@ impl Agent {
         &self.id
     }
 
-    pub fn publish<M>(&mut self, message: &M) -> Result<(), Error>
-    where
-        M: Publishable,
-    {
-        let topic = message.destination_topic(&self.id)?;
-        let bytes = message.to_bytes()?;
+    pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
+        let topic = self.id.destination_topic(&message)?;
         let qos = message.qos();
+        let bytes = message.into_bytes()?;
 
         self.tx
             .publish(topic, qos, false, bytes)
@@ -360,7 +357,7 @@ impl IncomingRequestProperties {
     }
 
     pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
-        OutgoingResponseProperties::new(status, &self.correlation_data, Some(&self.response_topic))
+        OutgoingResponseProperties::new(status, &self.correlation_data)
     }
 }
 
@@ -506,20 +503,13 @@ pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
     correlation_data: String,
-    #[serde(skip)]
-    response_topic: Option<String>,
 }
 
 impl OutgoingResponseProperties {
-    pub fn new(
-        status: ResponseStatus,
-        correlation_data: &str,
-        response_topic: Option<&str>,
-    ) -> Self {
+    pub fn new(status: ResponseStatus, correlation_data: &str) -> Self {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
-            response_topic: response_topic.map(ToOwned::to_owned),
         }
     }
 }
@@ -534,6 +524,7 @@ pub type ResponseStatus = http::StatusCode;
 pub struct OutgoingMessage<T, P>
 where
     T: serde::Serialize,
+    P: OutgoingProperties,
 {
     payload: T,
     properties: P,
@@ -543,6 +534,7 @@ where
 impl<T, P> OutgoingMessage<T, P>
 where
     T: serde::Serialize,
+    P: OutgoingProperties,
 {
     fn new(payload: T, properties: P, destination: Destination) -> Self {
         Self {
@@ -668,124 +660,131 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Publishable {
-    fn destination_topic<A>(&self, me: &A) -> Result<String, Error>
-    where
-        A: Addressable;
-
-    fn to_bytes(&self) -> Result<String, Error>;
+    fn message_type(&self) -> &'static str;
+    fn destination(&self) -> &Destination;
     fn qos(&self) -> QoS;
+    fn into_bytes(self: Box<Self>) -> Result<String, Error>;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-pub trait Publish {
-    fn publish(&self, tx: &mut Agent) -> Result<(), Error>;
-}
-
-impl<T> Publish for T
+impl<T, P> Publishable for OutgoingMessage<T, P>
 where
-    T: Publishable,
+    T: serde::Serialize,
+    P: OutgoingProperties,
+    OutgoingMessage<T, P>: compat::IntoEnvelope,
 {
-    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
-        tx.publish(self)?;
-        Ok(())
+    fn message_type(&self) -> &'static str {
+        self.properties.message_type()
     }
-}
 
-impl<T1, T2> Publish for (T1, T2)
-where
-    T1: Publishable,
-    T2: Publishable,
-{
-    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
-        tx.publish(&self.0)?;
-        tx.publish(&self.1)?;
-        Ok(())
+    fn destination(&self) -> &Destination {
+        &self.destination
     }
-}
 
-impl<T> Publish for Vec<T>
-where
-    T: Publishable,
-{
-    fn publish(&self, tx: &mut Agent) -> Result<(), Error> {
-        for msg in self {
-            tx.publish(msg)?;
-        }
-        Ok(())
+    fn qos(&self) -> QoS {
+        self.properties.qos()
+    }
+
+    fn into_bytes(self: Box<Self>) -> Result<String, Error> {
+        use compat::IntoEnvelope;
+
+        let envelope = self.into_envelope()?;
+
+        Ok(serde_json::to_string(&envelope)
+            .map_err(|e| Error::new(&format!("error serializing an envelope to bytes, {}", &e)))?)
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-trait DestinationTopic {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable;
+pub trait DestinationTopic {
+    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error>;
 }
 
-impl DestinationTopic for OutgoingEventProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match dest {
-            Destination::Broadcast(ref uri) => Ok(format!(
-                "apps/{app}/api/v1/{uri}",
-                app = me.as_account_id(),
-                uri = uri,
-            )),
-            _ => Err(Error::new(&format!(
-                "destination = '{:?}' is incompatible with event message type",
-                dest,
-            ))),
-        }
-    }
-}
+impl DestinationTopic for AgentId {
+    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error> {
+        let dest = message.destination();
 
-impl DestinationTopic for OutgoingRequestProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match dest {
-            Destination::Unicast(ref agent_id) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/{app}",
-                agent_id = agent_id,
-                app = me.as_account_id(),
-            )),
-            Destination::Multicast(ref account_id) => Ok(format!(
-                "agents/{agent_id}/api/v1/out/{app}",
-                agent_id = me.as_agent_id(),
-                app = account_id,
-            )),
-            _ => Err(Error::new(&format!(
-                "destination = '{:?}' is incompatible with request message type",
-                dest,
-            ))),
-        }
-    }
-}
-
-impl DestinationTopic for OutgoingResponseProperties {
-    fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-    where
-        A: Addressable,
-    {
-        match &self.response_topic {
-            Some(ref val) => Ok(val.to_owned()),
-            None => match dest {
+        match message.message_type() {
+            "event" => match dest {
+                Destination::Broadcast(ref uri) => Ok(format!(
+                    "apps/{app}/api/v1/{uri}",
+                    app = self.as_account_id(),
+                    uri = uri,
+                )),
+                _ => Err(Error::new(&format!(
+                    "destination = '{:?}' is incompatible with event message type",
+                    dest,
+                ))),
+            },
+            "request" => match dest {
                 Destination::Unicast(ref agent_id) => Ok(format!(
                     "agents/{agent_id}/api/v1/in/{app}",
                     agent_id = agent_id,
-                    app = me.as_account_id(),
+                    app = self.as_account_id(),
+                )),
+                Destination::Multicast(ref account_id) => Ok(format!(
+                    "agents/{agent_id}/api/v1/out/{app}",
+                    agent_id = self,
+                    app = account_id,
+                )),
+                _ => Err(Error::new(&format!(
+                    "destination = '{:?}' is incompatible with request message type",
+                    dest,
+                ))),
+            },
+            "response" => match dest {
+                Destination::Unicast(ref agent_id) => Ok(format!(
+                    "agents/{agent_id}/api/v1/in/{app}",
+                    agent_id = agent_id,
+                    app = self.as_account_id(),
                 )),
                 _ => Err(Error::new(&format!(
                     "destination = '{:?}' is incompatible with response message type",
                     dest,
                 ))),
             },
+            message_type => Err(Error::new(&format!(
+                "Unknown message type: '{}'",
+                message_type
+            ))),
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+pub trait OutgoingProperties {
+    fn message_type(&self) -> &'static str;
+    fn qos(&self) -> QoS;
+}
+
+impl OutgoingProperties for OutgoingEventProperties {
+    fn message_type(&self) -> &'static str {
+        "event"
+    }
+
+    fn qos(&self) -> QoS {
+        QoS::AtLeastOnce
+    }
+}
+
+impl OutgoingProperties for OutgoingRequestProperties {
+    fn message_type(&self) -> &'static str {
+        "request"
+    }
+
+    fn qos(&self) -> QoS {
+        QoS::AtMostOnce
+    }
+}
+
+impl OutgoingProperties for OutgoingResponseProperties {
+    fn message_type(&self) -> &'static str {
+        "response"
+    }
+
+    fn qos(&self) -> QoS {
+        QoS::AtLeastOnce
     }
 }
 
@@ -874,16 +873,13 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub mod compat {
-
     use serde_derive::{Deserialize, Serialize};
 
     use super::{
-        Destination, DestinationTopic, IncomingEvent, IncomingEventProperties, IncomingMessage,
-        IncomingRequest, IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
+        Destination, IncomingEvent, IncomingEventProperties, IncomingMessage, IncomingRequest,
+        IncomingRequestProperties, IncomingResponse, IncomingResponseProperties,
         OutgoingEventProperties, OutgoingRequestProperties, OutgoingResponseProperties,
-        Publishable, QoS,
     };
-    use crate::Addressable;
     use crate::Error;
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -984,42 +980,6 @@ pub mod compat {
                 payload: payload.to_owned(),
                 properties,
                 destination,
-            }
-        }
-    }
-
-    impl DestinationTopic for OutgoingEnvelopeProperties {
-        fn destination_topic<A>(&self, me: &A, dest: &Destination) -> Result<String, Error>
-        where
-            A: Addressable,
-        {
-            match self {
-                OutgoingEnvelopeProperties::Event(val) => val.destination_topic(me, dest),
-                OutgoingEnvelopeProperties::Request(val) => val.destination_topic(me, dest),
-                OutgoingEnvelopeProperties::Response(val) => val.destination_topic(me, dest),
-            }
-        }
-    }
-
-    impl<'a> Publishable for OutgoingEnvelope {
-        fn destination_topic<A>(&self, me: &A) -> Result<String, Error>
-        where
-            A: Addressable,
-        {
-            self.properties.destination_topic(me, &self.destination)
-        }
-
-        fn to_bytes(&self) -> Result<String, Error> {
-            Ok(serde_json::to_string(&self).map_err(|e| {
-                Error::new(&format!("error serializing an envelope to bytes, {}", &e))
-            })?)
-        }
-
-        fn qos(&self) -> QoS {
-            match self.properties {
-                OutgoingEnvelopeProperties::Event(_) => QoS::AtLeastOnce,
-                OutgoingEnvelopeProperties::Request(_) => QoS::AtMostOnce,
-                OutgoingEnvelopeProperties::Response(_) => QoS::AtLeastOnce,
             }
         }
     }
