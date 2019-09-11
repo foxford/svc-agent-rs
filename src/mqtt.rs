@@ -310,11 +310,16 @@ impl From<AgentId> for AuthnProperties {
 pub struct IncomingEventProperties {
     #[serde(flatten)]
     conn: ConnectionProperties,
+    label: String,
 }
 
 impl IncomingEventProperties {
     pub fn to_connection(&self) -> Connection {
         self.conn.to_connection()
+    }
+
+    pub fn label(&self) -> &str {
+        self.label.as_ref()
     }
 }
 
