@@ -1,18 +1,28 @@
 # Changelog
 
+## v0.8.1 (September 12, 2019)
+
+### Features
+- Add `label` to `IncomingEvent` ([2c454c2](https://github.com/netology-group/svc-agent-rs/2c454c269d7429fc8f580c13473b3d4c8a71764b))
+
+
+
 ## v0.8.0 (September 10, 2019)
 
 ### Changes
-
 - Implement `Publishable` on `OutgoingMessage`, remove `Publish` trait ([4968cdf](https://github.com/netology-group/svc-agent-rs/commit/4968cdfb338b17385129ffef8ec421eb1c7b9e56))
 - Implement `DestinationTopic` on `AgentId` ([04020b0](https://github.com/netology-group/svc-agent-rs/commit/04020b04bfef0421e8b7785054a4cbf4bf0ca86f))
 - Remove `response_topic` field from `OutgoingResponse` ([c797b44](https://github.com/netology-group/svc-agent-rs/commit/c797b44e007978cc47dd999ec966a63b9cd8b797))
 - Replace `to_bytes` with `into_bytes` in `Publishable` trait ([9b0df11](https://github.com/netology-group/svc-agent-rs/commit/9b0df11f6e10ce7dc09e2135cc45bb5f0dc50ed7))
 
+
+
 ## v0.7.3 (August 14, 2019)
 
 ### Changes
 - Serialize `status` as string for MQTT v5 user properties compatibility ([3fb1d31](https://github.com/netology-group/svc-agent-rs/commit/3fb1d31c69387eb34f6e748fb221c684272e929a))
+
+
 
 ## v0.7.2 (June 28, 2019)
 
