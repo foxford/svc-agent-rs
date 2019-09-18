@@ -238,11 +238,42 @@ impl Connection {
         self.mode = value;
         self
     }
+
+    pub fn agent_id(&self) -> &AgentId {
+        &self.agent_id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn mode(&self) -> &ConnectionMode {
+        &self.mode
+    }
 }
 
 impl fmt::Display for Connection {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}/{}/{}", self.version, self.mode, self.agent_id,)
+    }
+}
+
+impl FromStr for Connection {
+    type Err = Error;
+
+    fn from_str(val: &str) -> Result<Self, Self::Err> {
+        match val.split('/').collect::<Vec<&str>>().as_slice() {
+            [version_str, mode_str, agent_id_str] => {
+                let version = version_str.to_string();
+                let mode = ConnectionMode::from_str(mode_str)?;
+                let agent_id = AgentId::from_str(agent_id_str)?;
+                Ok(Self { version, mode, agent_id })
+            }
+            _ => Err(Error::new(&format!(
+                "invalid value for connection: {}",
+                val
+            )))
+        }
     }
 }
 
