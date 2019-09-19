@@ -394,6 +394,7 @@ impl IncomingRequestProperties {
 
     pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
         OutgoingResponseProperties::new(status, &self.correlation_data)
+            .set_response_topic(&self.response_topic)
     }
 }
 
@@ -539,6 +540,7 @@ pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
     correlation_data: String,
+    response_topic: Option<String>,
 }
 
 impl OutgoingResponseProperties {
@@ -546,7 +548,19 @@ impl OutgoingResponseProperties {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
+            response_topic: None,
         }
+    }
+
+    pub fn set_response_topic(self, response_topic: &str) -> Self {
+        Self {
+            response_topic: Some(response_topic.to_string()),
+            ..self
+        }
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        self.response_topic.as_ref().map(|t| &**t)
     }
 }
 
@@ -699,6 +713,7 @@ pub trait Publishable {
     fn message_type(&self) -> &'static str;
     fn destination(&self) -> &Destination;
     fn qos(&self) -> QoS;
+    fn response_topic(&self) -> Option<&str>;
     fn into_bytes(self: Box<Self>) -> Result<String, Error>;
 }
 
@@ -718,6 +733,10 @@ where
 
     fn qos(&self) -> QoS {
         self.properties.qos()
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        self.properties.response_topic()
     }
 
     fn into_bytes(self: Box<Self>) -> Result<String, Error> {
@@ -768,17 +787,20 @@ impl DestinationTopic for AgentId {
                     dest,
                 ))),
             },
-            "response" => match dest {
-                Destination::Unicast(ref agent_id) => Ok(format!(
-                    "agents/{agent_id}/api/v1/in/{app}",
-                    agent_id = agent_id,
-                    app = self.as_account_id(),
-                )),
-                _ => Err(Error::new(&format!(
-                    "destination = '{:?}' is incompatible with response message type",
-                    dest,
-                ))),
-            },
+            "response" => match message.response_topic() {
+                Some(val) => Ok(val.to_string()),
+                None => match dest {
+                    Destination::Unicast(ref agent_id) => Ok(format!(
+                        "agents/{agent_id}/api/v1/in/{app}",
+                        agent_id = agent_id,
+                        app = self.as_account_id(),
+                    )),
+                    _ => Err(Error::new(&format!(
+                        "destination = '{:?}' is incompatible with response message type",
+                        dest,
+                    ))),
+                }
+            }
             message_type => Err(Error::new(&format!(
                 "Unknown message type: '{}'",
                 message_type
@@ -792,6 +814,7 @@ impl DestinationTopic for AgentId {
 pub trait OutgoingProperties {
     fn message_type(&self) -> &'static str;
     fn qos(&self) -> QoS;
+    fn response_topic(&self) -> Option<&str>;
 }
 
 impl OutgoingProperties for OutgoingEventProperties {
@@ -801,6 +824,10 @@ impl OutgoingProperties for OutgoingEventProperties {
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        None
     }
 }
 
@@ -812,6 +839,10 @@ impl OutgoingProperties for OutgoingRequestProperties {
     fn qos(&self) -> QoS {
         QoS::AtMostOnce
     }
+
+    fn response_topic(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl OutgoingProperties for OutgoingResponseProperties {
@@ -821,6 +852,10 @@ impl OutgoingProperties for OutgoingResponseProperties {
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
+    }
+
+    fn response_topic(&self) -> Option<&str> {
+        self.response_topic()
     }
 }
 
