@@ -544,6 +544,7 @@ pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
     correlation_data: String,
+    #[serde(skip)]
     response_topic: Option<String>,
 }
 
