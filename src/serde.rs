@@ -156,6 +156,35 @@ impl ser::Serialize for Connection {
     }
 }
 
+impl<'de> de::Deserialize<'de> for Connection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct ConnectionVisitor;
+
+        impl<'de> de::Visitor<'de> for ConnectionVisitor {
+            type Value = Connection;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct Connection")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                use std::str::FromStr;
+
+                Connection::from_str(v)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        deserializer.deserialize_str(ConnectionVisitor)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 impl ser::Serialize for AuthnProperties {
