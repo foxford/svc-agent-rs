@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.3 (September 20, 2019)
+
+### Fixes
+- Skip response topic (de)serialization ([b057a28](https://github.com/netology-group/svc-agent-rs/b057a281f0a66f9e77a95a0ffd8e9e7b1d1f94e2))
+
+
+
 ## v0.8.2 (September 19, 2019)
 
 ### Changes
