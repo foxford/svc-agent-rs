@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.8.2 (September 19, 2019)
+
+### Changes
+- Add getters & deserialization for Connection ([36cb194](https://github.com/netology-group/svc-agent-rs/36cb194d7a859d73153ca5980b8e94d5e929c393))
+- Send response to request's response topic ([9a1cf6f](https://github.com/netology-group/svc-agent-rs/9a1cf6fcb714e36d38e9c3af40fb42186f4e0de4))
+- Make incoming event's label optional ([20f93f7](https://github.com/netology-group/svc-agent-rs/20f93f7cbf8b9436e6def3ea3302bc96dd708650))
+
+
+
 ## v0.8.1 (September 12, 2019)
 
 ### Features
