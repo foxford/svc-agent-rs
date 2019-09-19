@@ -267,12 +267,16 @@ impl FromStr for Connection {
                 let version = version_str.to_string();
                 let mode = ConnectionMode::from_str(mode_str)?;
                 let agent_id = AgentId::from_str(agent_id_str)?;
-                Ok(Self { version, mode, agent_id })
+                Ok(Self {
+                    version,
+                    mode,
+                    agent_id,
+                })
             }
             _ => Err(Error::new(&format!(
                 "invalid value for connection: {}",
                 val
-            )))
+            ))),
         }
     }
 }
@@ -341,7 +345,7 @@ impl From<AgentId> for AuthnProperties {
 pub struct IncomingEventProperties {
     #[serde(flatten)]
     conn: ConnectionProperties,
-    label: String,
+    label: Option<String>,
 }
 
 impl IncomingEventProperties {
@@ -349,8 +353,8 @@ impl IncomingEventProperties {
         self.conn.to_connection()
     }
 
-    pub fn label(&self) -> &str {
-        self.label.as_ref()
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_ref().map(|l| &**l)
     }
 }
 
@@ -799,8 +803,8 @@ impl DestinationTopic for AgentId {
                         "destination = '{:?}' is incompatible with response message type",
                         dest,
                     ))),
-                }
-            }
+                },
+            },
             message_type => Err(Error::new(&format!(
                 "Unknown message type: '{}'",
                 message_type
