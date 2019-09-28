@@ -317,6 +317,31 @@ impl Addressable for ConnectionProperties {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
+pub struct BrokerProperties {
+    agent_id: AgentId,
+}
+
+impl From<AgentId> for BrokerProperties {
+    fn from(agent_id: AgentId) -> Self {
+        Self { agent_id }
+    }
+}
+
+impl Authenticable for BrokerProperties {
+    fn as_account_id(&self) -> &AccountId {
+        self.agent_id.as_account_id()
+    }
+}
+
+impl Addressable for BrokerProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        &self.agent_id
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone)]
 pub struct AuthnProperties {
     agent_id: AgentId,
 }
@@ -377,6 +402,8 @@ pub struct IncomingRequestProperties {
     response_topic: String,
     #[serde(flatten)]
     conn: ConnectionProperties,
+    #[serde(flatten)]
+    broker: BrokerProperties,
 }
 
 impl IncomingRequestProperties {
@@ -390,6 +417,10 @@ impl IncomingRequestProperties {
 
     pub fn response_topic(&self) -> &str {
         &self.response_topic
+    }
+
+    pub fn broker(&self) -> &BrokerProperties {
+        &self.broker
     }
 
     pub fn to_connection(&self) -> Connection {
