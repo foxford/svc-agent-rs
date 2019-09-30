@@ -3,8 +3,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    mqtt::AuthnProperties, mqtt::Connection, mqtt::ConnectionMode, AccountId, Addressable, AgentId,
-    Authenticable, SharedGroup,
+    mqtt::{AuthnProperties, BrokerProperties, Connection, ConnectionMode},
+    AccountId, Addressable, AgentId, Authenticable, SharedGroup,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,5 +296,126 @@ impl<'de> de::Deserialize<'de> for AuthnProperties {
 
         const FIELDS: &[&str] = &["agent_label", "account_label", "audience"];
         deserializer.deserialize_struct("AuthnProperties", FIELDS, AuthnPropertiesVisitor)
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+impl ser::Serialize for BrokerProperties {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut state = serializer.serialize_struct("BrokerProperties", 3)?;
+        state.serialize_field("broker_agent_label", self.as_agent_id().label())?;
+        state.serialize_field("broker_account_label", self.as_account_id().label())?;
+        state.serialize_field("broker_audience", self.as_account_id().audience())?;
+        state.end()
+    }
+}
+
+impl<'de> de::Deserialize<'de> for BrokerProperties {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        enum Field {
+            BrokerAgentLabel,
+            BrokerAccountLabel,
+            BrokerAudience,
+        };
+
+        impl<'de> de::Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
+            where
+                D: de::Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl<'de> de::Visitor<'de> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str(
+                            "`broker_agent_label` or `broker_account_label` or `broker_audience`",
+                        )
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+                    where
+                        E: de::Error,
+                    {
+                        match value {
+                            "broker_agent_label" => Ok(Field::BrokerAgentLabel),
+                            "broker_account_label" => Ok(Field::BrokerAccountLabel),
+                            "broker_audience" => Ok(Field::BrokerAudience),
+                            _ => Err(de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct BrokerPropertiesVisitor;
+
+        impl<'de> de::Visitor<'de> for BrokerPropertiesVisitor {
+            type Value = BrokerProperties;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct BrokerProperties")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<BrokerProperties, V::Error>
+            where
+                V: de::MapAccess<'de>,
+            {
+                let mut broker_agent_label = None;
+                let mut broker_account_label = None;
+                let mut broker_audience = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::BrokerAgentLabel => {
+                            if broker_agent_label.is_some() {
+                                return Err(de::Error::duplicate_field("broker_agent_label"));
+                            }
+                            broker_agent_label = Some(map.next_value()?);
+                        }
+                        Field::BrokerAccountLabel => {
+                            if broker_account_label.is_some() {
+                                return Err(de::Error::duplicate_field("broker_account_label"));
+                            }
+                            broker_account_label = Some(map.next_value()?);
+                        }
+                        Field::BrokerAudience => {
+                            if broker_audience.is_some() {
+                                return Err(de::Error::duplicate_field("broker_audience"));
+                            }
+                            broker_audience = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let broker_agent_label = broker_agent_label
+                    .ok_or_else(|| de::Error::missing_field("broker_agent_label"))?;
+                let broker_account_label = broker_account_label
+                    .ok_or_else(|| de::Error::missing_field("broker_account_label"))?;
+                let broker_audience =
+                    broker_audience.ok_or_else(|| de::Error::missing_field("broker_audience"))?;
+
+                let broker_account_id = AccountId::new(broker_account_label, broker_audience);
+                let broker_agent_id = AgentId::new(broker_agent_label, broker_account_id);
+                Ok(BrokerProperties::from(broker_agent_id))
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "broker_agent_label",
+            "broker_account_label",
+            "broker_audience",
+        ];
+        deserializer.deserialize_struct("BrokerProperties", FIELDS, BrokerPropertiesVisitor)
     }
 }
