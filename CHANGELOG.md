@@ -1,25 +1,31 @@
 # Changelog
 
+## v0.8.4 (September 30, 2019)
+
+### Changes
+- Add broker properties to `IncomingRequest` ([ad40e63](https://github.com/netology-group/svc-agent-rs/commit/ad40e63956178a1a2218115a00d42237abd820d6))
+
+
 ## v0.8.3 (September 20, 2019)
 
 ### Fixes
-- Skip response topic (de)serialization ([b057a28](https://github.com/netology-group/svc-agent-rs/b057a281f0a66f9e77a95a0ffd8e9e7b1d1f94e2))
+- Skip response topic (de)serialization ([b057a28](https://github.com/netology-group/svc-agent-rs/commit/b057a281f0a66f9e77a95a0ffd8e9e7b1d1f94e2))
 
 
 
 ## v0.8.2 (September 19, 2019)
 
 ### Changes
-- Add getters & deserialization for Connection ([36cb194](https://github.com/netology-group/svc-agent-rs/36cb194d7a859d73153ca5980b8e94d5e929c393))
-- Send response to request's response topic ([9a1cf6f](https://github.com/netology-group/svc-agent-rs/9a1cf6fcb714e36d38e9c3af40fb42186f4e0de4))
-- Make incoming event's label optional ([20f93f7](https://github.com/netology-group/svc-agent-rs/20f93f7cbf8b9436e6def3ea3302bc96dd708650))
+- Add getters & deserialization for Connection ([36cb194](https://github.com/netology-group/svc-agent-rs/commit/36cb194d7a859d73153ca5980b8e94d5e929c393))
+- Send response to request's response topic ([9a1cf6f](https://github.com/netology-group/svc-agent-rs/commit/9a1cf6fcb714e36d38e9c3af40fb42186f4e0de4))
+- Make incoming event's label optional ([20f93f7](https://github.com/netology-group/svc-agent-rs/commit/20f93f7cbf8b9436e6def3ea3302bc96dd708650))
 
 
 
 ## v0.8.1 (September 12, 2019)
 
 ### Features
-- Add `label` to `IncomingEvent` ([2c454c2](https://github.com/netology-group/svc-agent-rs/2c454c269d7429fc8f580c13473b3d4c8a71764b))
+- Add `label` to `IncomingEvent` ([2c454c2](https://github.com/netology-group/svc-agent-rs/commit/2c454c269d7429fc8f580c13473b3d4c8a71764b))
 
 
 
