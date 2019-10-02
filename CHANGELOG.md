@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.5 (October 2, 2019)
+
+### Features
+- Update rumqtt version to 0.31 ([c3d02ea](https://github.com/netology-group/svc-agent-rs/commit/c3d02ea0d6fc448c135c5cf978c156f68aa2615c))
+
+
 ## v0.8.4 (September 30, 2019)
 
 ### Changes
