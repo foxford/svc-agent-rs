@@ -103,7 +103,7 @@ impl AgentBuilder {
             _ => opts,
         };
         opts = match config.outgoing_message_queue_size {
-            Some(value) => opts.set_outgoing_queuelimit(value, std::time::Duration::from_secs(5)),
+            Some(value) => opts.set_inflight(value),
             _ => opts,
         };
         opts = match (&config.username, &config.password) {
