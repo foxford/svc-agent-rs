@@ -1,6 +1,9 @@
-use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     AccountId, Addressable, AgentId, Authenticable, Destination, Error, EventSubscription,
@@ -366,11 +369,90 @@ impl From<AgentId> for AuthnProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LongTermTimingProperties {
+    local_initial_timediff: Option<Duration>,
+    initial_timestamp: Option<DateTime<Utc>>,
+    broker_timestamp: DateTime<Utc>,
+    broker_processing_timestamp: DateTime<Utc>,
+    broker_initial_processing_timestamp: DateTime<Utc>,
+    cumulative_authorization_time: Option<Duration>,
+    cumulative_processing_time: Option<Duration>,
+}
+
+impl LongTermTimingProperties {
+    pub fn update_cumulative_timings(self, short_timing: &ShortTermTimingProperties) -> Self {
+        let cumulative_authorization_time = short_timing
+            .authorization_time
+            .map(|increment| {
+                self.cumulative_authorization_time
+                    .map_or(increment, |initial| initial + increment)
+            })
+            .or(self.cumulative_authorization_time);
+
+        let cumulative_processing_time = short_timing
+            .processing_time
+            .map(|increment| {
+                self.cumulative_processing_time
+                    .map_or(increment, |initial| initial + increment)
+            })
+            .or(self.cumulative_processing_time);
+
+        Self {
+            cumulative_authorization_time,
+            cumulative_processing_time,
+            ..self
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ShortTermTimingProperties {
+    timestamp: DateTime<Utc>,
+    processing_time: Option<Duration>,
+    authorization_time: Option<Duration>,
+}
+
+impl ShortTermTimingProperties {
+    pub fn until_now(start_timestamp: DateTime<Utc>) -> Self {
+        let now = Utc::now();
+        let mut timing = Self::new(now);
+
+        if let Ok(processing_time) = (now - start_timestamp).to_std() {
+            timing.set_processing_time(processing_time);
+        }
+
+        timing
+    }
+
+    pub fn new(timestamp: DateTime<Utc>) -> Self {
+        Self {
+            timestamp,
+            processing_time: None,
+            authorization_time: None,
+        }
+    }
+
+    pub fn set_processing_time(&mut self, processing_time: Duration) -> &mut Self {
+        self.processing_time = Some(processing_time);
+        self
+    }
+
+    pub fn set_authorization_time(&mut self, authorization_time: Duration) -> &mut Self {
+        self.authorization_time = Some(authorization_time);
+        self
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug, Deserialize)]
 pub struct IncomingEventProperties {
     #[serde(flatten)]
     conn: ConnectionProperties,
     label: Option<String>,
+    #[serde(flatten)]
+    long_term_timing: LongTermTimingProperties,
 }
 
 impl IncomingEventProperties {
@@ -380,6 +462,26 @@ impl IncomingEventProperties {
 
     pub fn label(&self) -> Option<&str> {
         self.label.as_ref().map(|l| &**l)
+    }
+
+    pub fn to_event(
+        &self,
+        label: &'static str,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> OutgoingEventProperties {
+        let long_term_timing = self.update_long_term_timing(&short_term_timing);
+        let mut props = OutgoingEventProperties::new(label, short_term_timing);
+        props.set_long_term_timing(long_term_timing);
+        props
+    }
+
+    fn update_long_term_timing(
+        &self,
+        short_term_timing: &ShortTermTimingProperties,
+    ) -> LongTermTimingProperties {
+        self.long_term_timing
+            .clone()
+            .update_cumulative_timings(short_term_timing)
     }
 }
 
@@ -404,6 +506,8 @@ pub struct IncomingRequestProperties {
     conn: ConnectionProperties,
     #[serde(flatten)]
     broker: BrokerProperties,
+    #[serde(flatten)]
+    long_term_timing: LongTermTimingProperties,
 }
 
 impl IncomingRequestProperties {
@@ -427,9 +531,60 @@ impl IncomingRequestProperties {
         self.conn.to_connection()
     }
 
-    pub fn to_response(&self, status: ResponseStatus) -> OutgoingResponseProperties {
-        OutgoingResponseProperties::new(status, &self.correlation_data)
-            .set_response_topic(&self.response_topic)
+    pub fn to_event(
+        &self,
+        label: &'static str,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> OutgoingEventProperties {
+        let long_term_timing = self.update_long_term_timing(&short_term_timing);
+        let mut props = OutgoingEventProperties::new(label, short_term_timing);
+        props.set_long_term_timing(long_term_timing);
+        props
+    }
+
+    pub fn to_request(
+        &self,
+        method: &str,
+        response_topic: &str,
+        correlation_data: &str,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> OutgoingRequestProperties {
+        let long_term_timing = self.update_long_term_timing(&short_term_timing);
+
+        let mut props = OutgoingRequestProperties::new(
+            method,
+            response_topic,
+            correlation_data,
+            short_term_timing,
+        );
+
+        props.set_long_term_timing(long_term_timing);
+        props
+    }
+
+    pub fn to_response(
+        &self,
+        status: ResponseStatus,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> OutgoingResponseProperties {
+        let mut props = OutgoingResponseProperties::new(
+            status,
+            &self.correlation_data,
+            self.update_long_term_timing(&short_term_timing),
+            short_term_timing,
+        );
+
+        props.response_topic = Some(self.response_topic.to_owned());
+        props
+    }
+
+    fn update_long_term_timing(
+        &self,
+        short_term_timing: &ShortTermTimingProperties,
+    ) -> LongTermTimingProperties {
+        self.long_term_timing
+            .clone()
+            .update_cumulative_timings(short_term_timing)
     }
 }
 
@@ -452,6 +607,8 @@ pub struct IncomingResponseProperties {
     correlation_data: String,
     #[serde(flatten)]
     conn: ConnectionProperties,
+    #[serde(flatten)]
+    long_term_timing: LongTermTimingProperties,
 }
 
 impl IncomingResponseProperties {
@@ -461,6 +618,10 @@ impl IncomingResponseProperties {
 
     pub fn correlation_data(&self) -> &str {
         &self.correlation_data
+    }
+
+    pub fn long_term_timing(&self) -> &LongTermTimingProperties {
+        &self.long_term_timing
     }
 
     pub fn to_connection(&self) -> Connection {
@@ -512,13 +673,18 @@ where
 }
 
 impl<T> IncomingRequest<T> {
-    pub fn to_response<R>(&self, data: R, status: ResponseStatus) -> OutgoingResponse<R>
+    pub fn to_response<R>(
+        &self,
+        data: R,
+        status: ResponseStatus,
+        timing: ShortTermTimingProperties,
+    ) -> OutgoingResponse<R>
     where
         R: serde::Serialize,
     {
         OutgoingMessage::new(
             data,
-            self.properties.to_response(status),
+            self.properties.to_response(status, timing),
             Destination::Unicast(self.properties().as_agent_id().clone()),
         )
     }
@@ -533,11 +699,24 @@ pub type IncomingResponse<T> = IncomingMessage<T, IncomingResponseProperties>;
 #[derive(Debug, Serialize)]
 pub struct OutgoingEventProperties {
     label: &'static str,
+    #[serde(flatten)]
+    long_term_timing: Option<LongTermTimingProperties>,
+    #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
 }
 
 impl OutgoingEventProperties {
-    pub fn new(label: &'static str) -> Self {
-        Self { label }
+    pub fn new(label: &'static str, short_term_timing: ShortTermTimingProperties) -> Self {
+        Self {
+            label,
+            long_term_timing: None,
+            short_term_timing,
+        }
+    }
+
+    pub fn set_long_term_timing(&mut self, timing: LongTermTimingProperties) -> &mut Self {
+        self.long_term_timing = Some(timing);
+        self
     }
 }
 
@@ -548,20 +727,36 @@ pub struct OutgoingRequestProperties {
     response_topic: String,
     #[serde(flatten)]
     authn: Option<AuthnProperties>,
+    #[serde(flatten)]
+    long_term_timing: Option<LongTermTimingProperties>,
+    #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
 }
 
 impl OutgoingRequestProperties {
-    pub fn new(method: &str, response_topic: &str, correlation_data: &str) -> Self {
+    pub fn new(
+        method: &str,
+        response_topic: &str,
+        correlation_data: &str,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> Self {
         Self {
             method: method.to_owned(),
             response_topic: response_topic.to_owned(),
             correlation_data: correlation_data.to_owned(),
             authn: None,
+            long_term_timing: None,
+            short_term_timing,
         }
     }
 
     pub fn set_authn(&mut self, authn: AuthnProperties) -> &mut Self {
         self.authn = Some(authn);
+        self
+    }
+
+    pub fn set_long_term_timing(&mut self, timing: LongTermTimingProperties) -> &mut Self {
+        self.long_term_timing = Some(timing);
         self
     }
 
@@ -577,21 +772,25 @@ pub struct OutgoingResponseProperties {
     correlation_data: String,
     #[serde(skip)]
     response_topic: Option<String>,
+    #[serde(flatten)]
+    long_term_timing: LongTermTimingProperties,
+    #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
 }
 
 impl OutgoingResponseProperties {
-    pub fn new(status: ResponseStatus, correlation_data: &str) -> Self {
+    pub fn new(
+        status: ResponseStatus,
+        correlation_data: &str,
+        long_term_timing: LongTermTimingProperties,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> Self {
         Self {
             status,
             correlation_data: correlation_data.to_owned(),
             response_topic: None,
-        }
-    }
-
-    pub fn set_response_topic(self, response_topic: &str) -> Self {
-        Self {
-            response_topic: Some(response_topic.to_string()),
-            ..self
+            long_term_timing,
+            short_term_timing,
         }
     }
 
