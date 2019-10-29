@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.0 (October 29, 2019)
+
+### Featurs
+- Add timing ([b338621](https://github.com/netology-group/svc-agent-rs/commit/b338621aa355e98aaaa34c6352a24e5127d81e35))
+
+
 ## v0.8.5 (October 2, 2019)
 
 ### Features
