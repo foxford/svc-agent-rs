@@ -419,3 +419,211 @@ impl<'de> de::Deserialize<'de> for BrokerProperties {
         deserializer.deserialize_struct("BrokerProperties", FIELDS, BrokerPropertiesVisitor)
     }
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+pub(crate) mod ts_milliseconds_string {
+    use std::fmt;
+
+    use chrono::{offset::TimeZone, DateTime, LocalResult, Utc};
+    use serde::{de, ser};
+
+    pub(crate) fn serialize<S>(dt: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&dt.timestamp_millis().to_string())
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        d.deserialize_any(TimestampMillisecondsVisitor)
+    }
+
+    pub struct TimestampMillisecondsVisitor;
+
+    impl<'de> de::Visitor<'de> for TimestampMillisecondsVisitor {
+        type Value = DateTime<Utc>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("unix time (milliseconds as string)")
+        }
+
+        fn visit_str<E>(self, value_str: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            match value_str.parse::<u64>() {
+                Ok(value) => {
+                    let local_result = Utc
+                        .timestamp_opt((value / 1000) as i64, ((value % 1000) * 1_000_000) as u32);
+
+                    match local_result {
+                        LocalResult::Single(ms) => Ok(ms),
+                        _ => Err(E::custom(format!(
+                            "failed to parse milliseconds: {}",
+                            value
+                        ))),
+                    }
+                }
+                Err(err) => Err(E::custom(format!(
+                    "failed to parse integer from string: {}",
+                    err
+                ))),
+            }
+        }
+    }
+}
+
+pub(crate) mod ts_milliseconds_string_option {
+    use std::fmt;
+
+    use chrono::{DateTime, Utc};
+    use serde::{de, ser};
+
+    use super::ts_milliseconds_string;
+
+    pub(crate) fn serialize<S>(
+        option: &Option<DateTime<Utc>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        match option {
+            Some(value) => ts_milliseconds_string::serialize(value, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Option<DateTime<Utc>>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        d.deserialize_option(TimestampMillisecondsOptionVisitor)
+    }
+
+    pub struct TimestampMillisecondsOptionVisitor;
+
+    impl<'de> de::Visitor<'de> for TimestampMillisecondsOptionVisitor {
+        type Value = Option<DateTime<Utc>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("optional unix time (milliseconds as string)")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, d: D) -> Result<Self::Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            let value = ts_milliseconds_string::deserialize(d)?;
+            Ok(Some(value))
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+pub(crate) mod duration_milliseconds_string {
+    use std::fmt;
+    use std::time::Duration;
+
+    use serde::{de, ser};
+
+    pub(crate) fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&duration.as_millis().to_string())
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Duration, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        d.deserialize_any(DurationMillisecondsVisitor)
+    }
+
+    pub struct DurationMillisecondsVisitor;
+
+    impl<'de> de::Visitor<'de> for DurationMillisecondsVisitor {
+        type Value = Duration;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("duration (milliseconds as string)")
+        }
+
+        fn visit_str<E>(self, value_str: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            match value_str.parse::<u64>() {
+                Ok(value) => Ok(Duration::from_millis(value)),
+                Err(err) => Err(E::custom(format!(
+                    "failed to parse integer from string: {}",
+                    err
+                ))),
+            }
+        }
+    }
+}
+
+pub(crate) mod duration_milliseconds_string_option {
+    use std::fmt;
+    use std::time::Duration;
+
+    use serde::{de, ser};
+
+    use super::duration_milliseconds_string;
+
+    pub(crate) fn serialize<S>(option: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        match option {
+            Some(value) => duration_milliseconds_string::serialize(value, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Option<Duration>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        d.deserialize_option(DurationMillisecondsOptionVisitor)
+    }
+
+    pub struct DurationMillisecondsOptionVisitor;
+
+    impl<'de> de::Visitor<'de> for DurationMillisecondsOptionVisitor {
+        type Value = Option<Duration>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("optional duration (milliseconds as string)")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, d: D) -> Result<Self::Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            let value = duration_milliseconds_string::deserialize(d)?;
+            Ok(Some(value))
+        }
+    }
+}

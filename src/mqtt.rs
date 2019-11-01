@@ -6,6 +6,9 @@ use chrono::{DateTime, Utc};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
+    serde::{
+        duration_milliseconds_string_option, ts_milliseconds_string, ts_milliseconds_string_option,
+    },
     AccountId, Addressable, AgentId, Authenticable, Destination, Error, EventSubscription,
     RequestSubscription, ResponseSubscription, SharedGroup, Source,
 };
@@ -371,12 +374,19 @@ impl From<AgentId> for AuthnProperties {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LongTermTimingProperties {
+    #[serde(default, with = "duration_milliseconds_string_option")]
     local_initial_timediff: Option<Duration>,
+    #[serde(default, with = "ts_milliseconds_string_option")]
     initial_timestamp: Option<DateTime<Utc>>,
+    #[serde(with = "ts_milliseconds_string")]
     broker_timestamp: DateTime<Utc>,
+    #[serde(with = "ts_milliseconds_string")]
     broker_processing_timestamp: DateTime<Utc>,
+    #[serde(with = "ts_milliseconds_string")]
     broker_initial_processing_timestamp: DateTime<Utc>,
+    #[serde(default, with = "duration_milliseconds_string_option")]
     cumulative_authorization_time: Option<Duration>,
+    #[serde(default, with = "duration_milliseconds_string_option")]
     cumulative_processing_time: Option<Duration>,
 }
 
@@ -408,8 +418,11 @@ impl LongTermTimingProperties {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShortTermTimingProperties {
+    #[serde(with = "ts_milliseconds_string")]
     timestamp: DateTime<Utc>,
+    #[serde(default, with = "duration_milliseconds_string_option")]
     processing_time: Option<Duration>,
+    #[serde(default, with = "duration_milliseconds_string_option")]
     authorization_time: Option<Duration>,
 }
 
