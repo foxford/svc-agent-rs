@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.1 (November 1, 2019)
+
+### Fixes
+- Serialize timestamps & durations as strings ([0a647f4](https://github.com/netology-group/svc-agent-rs/commit/0a647f4d1c118cca3c4d8270d9ca49377b08b336))
+
 ## v0.9.0 (October 29, 2019)
 
 ### Featurs
