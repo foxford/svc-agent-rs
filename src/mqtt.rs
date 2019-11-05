@@ -374,9 +374,17 @@ impl From<AgentId> for AuthnProperties {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LongTermTimingProperties {
-    #[serde(default, with = "duration_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
     local_initial_timediff: Option<Duration>,
-    #[serde(default, with = "ts_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "ts_milliseconds_string_option"
+    )]
     initial_timestamp: Option<DateTime<Utc>>,
     #[serde(with = "ts_milliseconds_string")]
     broker_timestamp: DateTime<Utc>,
@@ -384,9 +392,17 @@ pub struct LongTermTimingProperties {
     broker_processing_timestamp: DateTime<Utc>,
     #[serde(with = "ts_milliseconds_string")]
     broker_initial_processing_timestamp: DateTime<Utc>,
-    #[serde(default, with = "duration_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
     cumulative_authorization_time: Option<Duration>,
-    #[serde(default, with = "duration_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
     cumulative_processing_time: Option<Duration>,
 }
 
@@ -420,9 +436,17 @@ impl LongTermTimingProperties {
 pub struct ShortTermTimingProperties {
     #[serde(with = "ts_milliseconds_string")]
     timestamp: DateTime<Utc>,
-    #[serde(default, with = "duration_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
     processing_time: Option<Duration>,
-    #[serde(default, with = "duration_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
     authorization_time: Option<Duration>,
 }
 
