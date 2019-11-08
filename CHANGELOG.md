@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.2 (November 8, 2019)
+
+### Fixes
+- Skip serializing empty timing properties ([fbf4662](https://github.com/netology-group/svc-agent-rs/commit/fbf4662ae234457f56fef35df4aeea0e45d85d4b))
+
 ## v0.9.1 (November 1, 2019)
 
 ### Fixes
