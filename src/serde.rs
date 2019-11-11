@@ -535,15 +535,15 @@ pub(crate) mod ts_milliseconds_string_option {
 
 pub(crate) mod duration_milliseconds_string {
     use std::fmt;
-    use std::time::Duration;
 
+    use chrono::Duration;
     use serde::{de, ser};
 
     pub(crate) fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: ser::Serializer,
     {
-        serializer.serialize_str(&duration.as_millis().to_string())
+        serializer.serialize_str(&duration.num_milliseconds().to_string())
     }
 
     pub fn deserialize<'de, D>(d: D) -> Result<Duration, D::Error>
@@ -566,8 +566,8 @@ pub(crate) mod duration_milliseconds_string {
         where
             E: de::Error,
         {
-            match value_str.parse::<u64>() {
-                Ok(value) => Ok(Duration::from_millis(value)),
+            match value_str.parse::<i64>() {
+                Ok(value) => Ok(Duration::milliseconds(value)),
                 Err(err) => Err(E::custom(format!(
                     "failed to parse integer from string: {}",
                     err
@@ -579,8 +579,8 @@ pub(crate) mod duration_milliseconds_string {
 
 pub(crate) mod duration_milliseconds_string_option {
     use std::fmt;
-    use std::time::Duration;
 
+    use chrono::Duration;
     use serde::{de, ser};
 
     use super::duration_milliseconds_string;

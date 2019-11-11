@@ -1,8 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
-use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -454,11 +453,7 @@ impl ShortTermTimingProperties {
     pub fn until_now(start_timestamp: DateTime<Utc>) -> Self {
         let now = Utc::now();
         let mut timing = Self::new(now);
-
-        if let Ok(processing_time) = (now - start_timestamp).to_std() {
-            timing.set_processing_time(processing_time);
-        }
-
+        timing.set_processing_time(now - start_timestamp);
         timing
     }
 
