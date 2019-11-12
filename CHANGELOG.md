@@ -1,18 +1,26 @@
 # Changelog
 
+## v0.9.3 (November 12, 2019)
+
+### Fixes
+- Support negative durations ([cff7b99](https://github.com/netology-group/svc-agent-rs/commit/cff7b990247f6ff948261201562515888d32b32b))
+
+
 ## v0.9.2 (November 8, 2019)
 
 ### Fixes
 - Skip serializing empty timing properties ([fbf4662](https://github.com/netology-group/svc-agent-rs/commit/fbf4662ae234457f56fef35df4aeea0e45d85d4b))
+
 
 ## v0.9.1 (November 1, 2019)
 
 ### Fixes
 - Serialize timestamps & durations as strings ([0a647f4](https://github.com/netology-group/svc-agent-rs/commit/0a647f4d1c118cca3c4d8270d9ca49377b08b336))
 
+
 ## v0.9.0 (October 29, 2019)
 
-### Featurs
+### Features
 - Add timing ([b338621](https://github.com/netology-group/svc-agent-rs/commit/b338621aa355e98aaaa34c6352a24e5127d81e35))
 
 
