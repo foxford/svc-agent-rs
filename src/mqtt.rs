@@ -476,6 +476,13 @@ impl ShortTermTimingProperties {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TrackingProperties {
+    tracking_id: String,
+    session_tracking_label: String,
+    local_tracking_label: Option<String>,
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Deserialize)]
@@ -485,6 +492,8 @@ pub struct IncomingEventProperties {
     label: Option<String>,
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
+    #[serde(flatten)]
+    tracking: TrackingProperties,
 }
 
 impl IncomingEventProperties {
@@ -496,6 +505,10 @@ impl IncomingEventProperties {
         self.label.as_ref().map(|l| &**l)
     }
 
+    pub fn tracking(&self) -> &TrackingProperties {
+        &self.tracking
+    }
+
     pub fn to_event(
         &self,
         label: &'static str,
@@ -504,6 +517,7 @@ impl IncomingEventProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
         props.set_long_term_timing(long_term_timing);
+        props.set_tracking(self.tracking.clone());
         props
     }
 
@@ -540,6 +554,8 @@ pub struct IncomingRequestProperties {
     broker: BrokerProperties,
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
+    #[serde(flatten)]
+    tracking: TrackingProperties,
 }
 
 impl IncomingRequestProperties {
@@ -559,6 +575,10 @@ impl IncomingRequestProperties {
         &self.broker
     }
 
+    pub fn tracking(&self) -> &TrackingProperties {
+        &self.tracking
+    }
+
     pub fn to_connection(&self) -> Connection {
         self.conn.to_connection()
     }
@@ -571,6 +591,7 @@ impl IncomingRequestProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
         props.set_long_term_timing(long_term_timing);
+        props.set_tracking(self.tracking.clone());
         props
     }
 
@@ -591,6 +612,7 @@ impl IncomingRequestProperties {
         );
 
         props.set_long_term_timing(long_term_timing);
+        props.set_tracking(self.tracking.clone());
         props
     }
 
@@ -604,6 +626,7 @@ impl IncomingRequestProperties {
             &self.correlation_data,
             self.update_long_term_timing(&short_term_timing),
             short_term_timing,
+            self.tracking.clone(),
         );
 
         props.response_topic = Some(self.response_topic.to_owned());
@@ -641,6 +664,8 @@ pub struct IncomingResponseProperties {
     conn: ConnectionProperties,
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
+    #[serde(flatten)]
+    tracking: TrackingProperties,
 }
 
 impl IncomingResponseProperties {
@@ -654,6 +679,10 @@ impl IncomingResponseProperties {
 
     pub fn long_term_timing(&self) -> &LongTermTimingProperties {
         &self.long_term_timing
+    }
+
+    pub fn tracking(&self) -> &TrackingProperties {
+        &self.tracking
     }
 
     pub fn to_connection(&self) -> Connection {
@@ -735,19 +764,30 @@ pub struct OutgoingEventProperties {
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
     short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
+    tracking: Option<TrackingProperties>,
 }
 
 impl OutgoingEventProperties {
-    pub fn new(label: &'static str, short_term_timing: ShortTermTimingProperties) -> Self {
+    pub fn new(
+        label: &'static str,
+        short_term_timing: ShortTermTimingProperties,
+    ) -> Self {
         Self {
             label,
             long_term_timing: None,
             short_term_timing,
+            tracking: None,
         }
     }
 
     pub fn set_long_term_timing(&mut self, timing: LongTermTimingProperties) -> &mut Self {
         self.long_term_timing = Some(timing);
+        self
+    }
+
+    pub fn set_tracking(&mut self, tracking: TrackingProperties) -> &mut Self {
+        self.tracking = Some(tracking);
         self
     }
 }
@@ -763,6 +803,8 @@ pub struct OutgoingRequestProperties {
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
     short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
+    tracking: Option<TrackingProperties>,
 }
 
 impl OutgoingRequestProperties {
@@ -771,6 +813,7 @@ impl OutgoingRequestProperties {
         response_topic: &str,
         correlation_data: &str,
         short_term_timing: ShortTermTimingProperties,
+    
     ) -> Self {
         Self {
             method: method.to_owned(),
@@ -779,6 +822,7 @@ impl OutgoingRequestProperties {
             authn: None,
             long_term_timing: None,
             short_term_timing,
+            tracking: None,
         }
     }
 
@@ -789,6 +833,11 @@ impl OutgoingRequestProperties {
 
     pub fn set_long_term_timing(&mut self, timing: LongTermTimingProperties) -> &mut Self {
         self.long_term_timing = Some(timing);
+        self
+    }
+
+    pub fn set_tracking(&mut self, tracking: TrackingProperties) -> &mut Self {
+        self.tracking = Some(tracking);
         self
     }
 
@@ -808,6 +857,8 @@ pub struct OutgoingResponseProperties {
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
     short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
+    tracking: TrackingProperties,
 }
 
 impl OutgoingResponseProperties {
@@ -816,6 +867,7 @@ impl OutgoingResponseProperties {
         correlation_data: &str,
         long_term_timing: LongTermTimingProperties,
         short_term_timing: ShortTermTimingProperties,
+        tracking: TrackingProperties,
     ) -> Self {
         Self {
             status,
@@ -823,6 +875,7 @@ impl OutgoingResponseProperties {
             response_topic: None,
             long_term_timing,
             short_term_timing,
+            tracking,
         }
     }
 
