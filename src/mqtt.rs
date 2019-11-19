@@ -3,10 +3,12 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
 use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     serde::{
-        duration_milliseconds_string_option, ts_milliseconds_string, ts_milliseconds_string_option,
+        duration_milliseconds_string_option, session_ids_list, ts_milliseconds_string,
+        ts_milliseconds_string_option,
     },
     AccountId, Addressable, AgentId, Authenticable, Destination, Error, EventSubscription,
     RequestSubscription, ResponseSubscription, SharedGroup, Source,
@@ -476,10 +478,59 @@ impl ShortTermTimingProperties {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SessionId {
+    agent_session_label: Uuid,
+    broker_session_label: Uuid,
+}
+
+impl FromStr for SessionId {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let components = s.split(".").collect::<Vec<&str>>();
+
+        match components[..] {
+            [agent_session_label_str, broker_session_label_str] => {
+                let agent_session_label =
+                    Uuid::parse_str(agent_session_label_str).map_err(|err| {
+                        let msg = format!("Failed to parse agent session label UUID: {}", err);
+                        Error::new(&msg)
+                    })?;
+
+                let broker_session_label =
+                    Uuid::parse_str(broker_session_label_str).map_err(|err| {
+                        let msg = format!("Failed to parse broker session label UUID: {}", err);
+                        Error::new(&msg)
+                    })?;
+
+                Ok(Self {
+                    agent_session_label,
+                    broker_session_label,
+                })
+            }
+            _ => Err(Error::new(
+                "Failed to parse SessionId. Expected 2 UUIDs separated by .",
+            )),
+        }
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "{}.{}",
+            self.agent_session_label, self.broker_session_label
+        )
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TrackingProperties {
-    tracking_id: String,
-    session_tracking_label: String,
+    tracking_id: Uuid,
+    #[serde(with = "session_ids_list")]
+    session_tracking_label: Vec<SessionId>,
     local_tracking_label: Option<String>,
 }
 
@@ -769,10 +820,7 @@ pub struct OutgoingEventProperties {
 }
 
 impl OutgoingEventProperties {
-    pub fn new(
-        label: &'static str,
-        short_term_timing: ShortTermTimingProperties,
-    ) -> Self {
+    pub fn new(label: &'static str, short_term_timing: ShortTermTimingProperties) -> Self {
         Self {
             label,
             long_term_timing: None,
@@ -813,7 +861,6 @@ impl OutgoingRequestProperties {
         response_topic: &str,
         correlation_data: &str,
         short_term_timing: ShortTermTimingProperties,
-    
     ) -> Self {
         Self {
             method: method.to_owned(),

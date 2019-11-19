@@ -627,3 +627,68 @@ pub(crate) mod duration_milliseconds_string_option {
         }
     }
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+pub(crate) mod session_ids_list {
+    use std::fmt;
+    use std::str::FromStr;
+
+    use serde::{de, ser};
+
+    use crate::mqtt::SessionId;
+
+    pub(crate) fn serialize<S>(
+        session_ids: &Vec<SessionId>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        let session_ids_str = session_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        serializer.serialize_str(&session_ids_str)
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Vec<SessionId>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        d.deserialize_str(SessionIdListVisitor)
+    }
+
+    pub struct SessionIdListVisitor;
+
+    impl<'de> de::Visitor<'de> for SessionIdListVisitor {
+        type Value = Vec<SessionId>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("session id list (whitespace separated)")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            let mut session_ids = vec![];
+
+            for session_id_str in s.split(" ") {
+                match SessionId::from_str(session_id_str) {
+                    Ok(session_id) => session_ids.push(session_id),
+                    Err(err) => {
+                        return Err(E::custom(format!(
+                            "failed to parse SessionId from string: {}",
+                            err
+                        )))
+                    }
+                }
+            }
+
+            Ok(session_ids)
+        }
+    }
+}
