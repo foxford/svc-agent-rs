@@ -3,6 +3,11 @@
 ## v0.9.5 (November 21, 2019)
 
 ### Fixes
+- Skip serializing empty local tracking label ([42a51c4](https://github.com/netology-group/svc-agent-rs/commit/42a51c4993fad0c54c08986a6d7855e4bd96812c))
+
+## v0.9.5 (November 21, 2019)
+
+### Fixes
 - Fix tracking id ([2150339](https://github.com/netology-group/svc-agent-rs/commit/2150339a4645fd5eb171588bf555f2e7be175603))
 
 
