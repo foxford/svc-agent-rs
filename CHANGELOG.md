@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.5 (November 21, 2019)
+
+### Fixes
+- Fix tracking id ([2150339](https://github.com/netology-group/svc-agent-rs/commit/2150339a4645fd5eb171588bf555f2e7be175603))
+
+
 ## v0.9.4 (November 21, 2019)
 
 ### Features
