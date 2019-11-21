@@ -570,6 +570,7 @@ pub struct TrackingProperties {
     tracking_id: TrackingId,
     #[serde(with = "session_ids_list")]
     session_tracking_label: Vec<SessionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
 }
 
