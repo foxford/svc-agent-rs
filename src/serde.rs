@@ -3,7 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    mqtt::{AuthnProperties, BrokerProperties, Connection, ConnectionMode},
+    mqtt::{AuthnProperties, BrokerProperties, Connection, ConnectionMode, TrackingId},
     AccountId, Addressable, AgentId, Authenticable, SharedGroup,
 };
 
@@ -690,5 +690,43 @@ pub(crate) mod session_ids_list {
 
             Ok(session_ids)
         }
+    }
+}
+
+impl ser::Serialize for TrackingId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> de::Deserialize<'de> for TrackingId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct TrackingIdVisitor;
+
+        impl<'de> de::Visitor<'de> for TrackingIdVisitor {
+            type Value = TrackingId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct TrackingId")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                use std::str::FromStr;
+
+                TrackingId::from_str(v)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        deserializer.deserialize_str(TrackingIdVisitor)
     }
 }

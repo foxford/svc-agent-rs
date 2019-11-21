@@ -478,6 +478,8 @@ impl ShortTermTimingProperties {
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
 #[derive(Clone, Debug)]
 pub struct SessionId {
     agent_session_label: Uuid,
@@ -488,7 +490,7 @@ impl FromStr for SessionId {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let components = s.split(".").collect::<Vec<&str>>();
+        let components = s.splitn(2, ".").collect::<Vec<&str>>();
 
         match components[..] {
             [agent_session_label_str, broker_session_label_str] => {
@@ -526,9 +528,46 @@ impl fmt::Display for SessionId {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct TrackingId {
+    label: Uuid,
+    session_id: SessionId,
+}
+
+impl FromStr for TrackingId {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let components = s.splitn(2, ".").collect::<Vec<&str>>();
+
+        match components[..] {
+            [label_str, session_id_str] => {
+                let label = Uuid::parse_str(label_str).map_err(|err| {
+                    let msg = format!("Failed to parse tracking id label UUID: {}", err);
+                    Error::new(&msg)
+                })?;
+
+                Ok(Self {
+                    label,
+                    session_id: SessionId::from_str(session_id_str)?,
+                })
+            }
+            _ => Err(Error::new(
+                "Failed to parse TrackingId. Expected 3 UUIDs separated by .",
+            )),
+        }
+    }
+}
+
+impl fmt::Display for TrackingId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}.{}", self.label, self.session_id)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TrackingProperties {
-    tracking_id: Uuid,
+    tracking_id: TrackingId,
     #[serde(with = "session_ids_list")]
     session_tracking_label: Vec<SessionId>,
     local_tracking_label: Option<String>,
