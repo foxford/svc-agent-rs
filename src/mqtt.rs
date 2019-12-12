@@ -24,16 +24,10 @@ pub struct AgentConfig {
     reconnect_interval: Option<u64>,
     outgoing_message_queue_size: Option<usize>,
     incomming_message_queue_size: Option<usize>,
-    username: Option<String>,
     password: Option<String>,
 }
 
 impl AgentConfig {
-    pub fn set_username(&mut self, value: &str) -> &mut Self {
-        self.username = Some(value.to_owned());
-        self
-    }
-
     pub fn set_password(&mut self, value: &str) -> &mut Self {
         self.password = Some(value.to_owned());
         self
@@ -72,7 +66,7 @@ impl AgentBuilder {
         self,
         config: &AgentConfig,
     ) -> Result<(Agent, rumqtt::Receiver<rumqtt::Notification>), Error> {
-        let options = Self::mqtt_options(&self.connection.to_string(), &config)?;
+        let options = Self::mqtt_options(&self.connection, &config)?;
         let (tx, rx) = rumqtt::MqttClient::start(options)
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
@@ -80,7 +74,10 @@ impl AgentBuilder {
         Ok((agent, rx))
     }
 
-    fn mqtt_options(client_id: &str, config: &AgentConfig) -> Result<rumqtt::MqttOptions, Error> {
+    fn mqtt_options(
+        connection: &Connection,
+        config: &AgentConfig,
+    ) -> Result<rumqtt::MqttOptions, Error> {
         let uri = config
             .uri
             .parse::<http::Uri>()
@@ -90,9 +87,19 @@ impl AgentBuilder {
             .port_part()
             .ok_or_else(|| Error::new("missing MQTT port"))?;
 
+        // For MQTT 3 we specify connection version and mode in username field
+        // because it doesn't have user properties like MQTT 5.
+        let username = format!("{}::{}", connection.version, connection.mode);
+
+        let password = config
+            .password
+            .to_owned()
+            .unwrap_or_else(|| String::from(""));
+
         // TODO: change to convenient code as soon as the PR will be merged
         // https://github.com/AtherEnergy/rumqtt/pull/145
-        let mut opts = rumqtt::MqttOptions::new(client_id, host, port.as_u16());
+        let mut opts =
+            rumqtt::MqttOptions::new(connection.agent_id.to_string(), host, port.as_u16());
         opts = match config.clean_session {
             Some(value) => opts.set_clean_session(value),
             _ => opts,
@@ -113,18 +120,9 @@ impl AgentBuilder {
             Some(value) => opts.set_inflight(value),
             _ => opts,
         };
-        opts = match (&config.username, &config.password) {
-            (Some(ref u), Some(ref p)) => opts.set_security_opts(
-                rumqtt::SecurityOptions::UsernamePassword(u.to_owned(), p.to_owned()),
-            ),
-            (Some(ref u), None) => opts.set_security_opts(
-                rumqtt::SecurityOptions::UsernamePassword(u.to_owned(), String::from("")),
-            ),
-            (None, Some(ref p)) => opts.set_security_opts(
-                rumqtt::SecurityOptions::UsernamePassword(String::from(""), p.to_owned()),
-            ),
-            (None, None) => opts,
-        };
+        opts = opts.set_security_opts(rumqtt::SecurityOptions::UsernamePassword(
+            username, password,
+        ));
 
         Ok(opts)
     }
@@ -192,10 +190,10 @@ impl fmt::Display for ConnectionMode {
             fmt,
             "{}",
             match self {
-                ConnectionMode::Default => "agents",
-                ConnectionMode::Service => "service-agents",
-                ConnectionMode::Observer => "observer-agents",
-                ConnectionMode::Bridge => "bridge-agents",
+                ConnectionMode::Default => "default",
+                ConnectionMode::Service => "service",
+                ConnectionMode::Observer => "observer",
+                ConnectionMode::Bridge => "bridge",
             }
         )
     }
@@ -206,10 +204,10 @@ impl FromStr for ConnectionMode {
 
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         match val {
-            "agents" => Ok(ConnectionMode::Default),
-            "service-agents" => Ok(ConnectionMode::Service),
-            "observer-agents" => Ok(ConnectionMode::Observer),
-            "bridge-agents" => Ok(ConnectionMode::Bridge),
+            "default" => Ok(ConnectionMode::Default),
+            "service" => Ok(ConnectionMode::Service),
+            "observer" => Ok(ConnectionMode::Observer),
+            "bridge" => Ok(ConnectionMode::Bridge),
             _ => Err(Error::new(&format!(
                 "invalid value for the connection mode: {}",
                 val
@@ -231,7 +229,7 @@ impl Connection {
     fn new(agent_id: AgentId) -> Self {
         Self {
             agent_id,
-            version: String::from("v1"),
+            version: String::from("v2"),
             mode: ConnectionMode::Default,
         }
     }
@@ -292,8 +290,7 @@ impl FromStr for Connection {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectionProperties {
-    #[serde(flatten)]
-    authn: AuthnProperties,
+    agent_id: AgentId,
     #[serde(rename = "connection_version")]
     version: String,
     #[serde(rename = "connection_mode")]
@@ -302,7 +299,7 @@ pub struct ConnectionProperties {
 
 impl ConnectionProperties {
     fn to_connection(&self) -> Connection {
-        let mut connection = Connection::new(self.authn.as_agent_id().clone());
+        let mut connection = Connection::new(self.agent_id.clone());
         connection.set_version(&self.version);
         connection.set_mode(self.mode.clone());
         connection
@@ -311,63 +308,13 @@ impl ConnectionProperties {
 
 impl Authenticable for ConnectionProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.authn.as_account_id()
+        &self.agent_id.as_account_id()
     }
 }
 
 impl Addressable for ConnectionProperties {
     fn as_agent_id(&self) -> &AgentId {
-        &self.authn.as_agent_id()
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, Clone)]
-pub struct BrokerProperties {
-    agent_id: AgentId,
-}
-
-impl From<AgentId> for BrokerProperties {
-    fn from(agent_id: AgentId) -> Self {
-        Self { agent_id }
-    }
-}
-
-impl Authenticable for BrokerProperties {
-    fn as_account_id(&self) -> &AccountId {
-        self.agent_id.as_account_id()
-    }
-}
-
-impl Addressable for BrokerProperties {
-    fn as_agent_id(&self) -> &AgentId {
         &self.agent_id
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, Clone)]
-pub struct AuthnProperties {
-    agent_id: AgentId,
-}
-
-impl Authenticable for AuthnProperties {
-    fn as_account_id(&self) -> &AccountId {
-        &self.agent_id.as_account_id()
-    }
-}
-
-impl Addressable for AuthnProperties {
-    fn as_agent_id(&self) -> &AgentId {
-        &self.agent_id
-    }
-}
-
-impl From<AgentId> for AuthnProperties {
-    fn from(agent_id: AgentId) -> Self {
-        Self { agent_id }
     }
 }
 
@@ -641,8 +588,7 @@ pub struct IncomingRequestProperties {
     response_topic: String,
     #[serde(flatten)]
     conn: ConnectionProperties,
-    #[serde(flatten)]
-    broker: BrokerProperties,
+    broker_agent_id: AgentId,
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
@@ -662,8 +608,8 @@ impl IncomingRequestProperties {
         &self.response_topic
     }
 
-    pub fn broker(&self) -> &BrokerProperties {
-        &self.broker
+    pub fn broker_agent_id(&self) -> &AgentId {
+        &self.broker_agent_id
     }
 
     pub fn tracking(&self) -> &TrackingProperties {
@@ -885,8 +831,7 @@ pub struct OutgoingRequestProperties {
     method: String,
     correlation_data: String,
     response_topic: String,
-    #[serde(flatten)]
-    authn: Option<AuthnProperties>,
+    agent_id: Option<AgentId>,
     #[serde(flatten)]
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
@@ -906,15 +851,15 @@ impl OutgoingRequestProperties {
             method: method.to_owned(),
             response_topic: response_topic.to_owned(),
             correlation_data: correlation_data.to_owned(),
-            authn: None,
+            agent_id: None,
             long_term_timing: None,
             short_term_timing,
             tracking: None,
         }
     }
 
-    pub fn set_authn(&mut self, authn: AuthnProperties) -> &mut Self {
-        self.authn = Some(authn);
+    pub fn set_agent_id(&mut self, agent_id: AgentId) -> &mut Self {
+        self.agent_id = Some(agent_id);
         self
     }
 
