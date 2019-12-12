@@ -576,7 +576,7 @@ pub struct TrackingProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IncomingEventProperties {
     #[serde(flatten)]
     conn: ConnectionProperties,
