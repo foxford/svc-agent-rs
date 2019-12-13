@@ -70,7 +70,7 @@ impl AgentBuilder {
         let (tx, rx) = rumqtt::MqttClient::start(options)
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
-        let agent = Agent::new(self.connection.agent_id, tx);
+        let agent = Agent::new(self.connection.agent_id, &self.connection.version, tx);
         Ok((agent, rx))
     }
 
@@ -131,12 +131,17 @@ impl AgentBuilder {
 #[derive(Clone)]
 pub struct Agent {
     id: AgentId,
+    version: String,
     tx: rumqtt::MqttClient,
 }
 
 impl Agent {
-    fn new(id: AgentId, tx: rumqtt::MqttClient) -> Self {
-        Self { id, tx }
+    fn new(id: AgentId, version: &str, tx: rumqtt::MqttClient) -> Self {
+        Self {
+            id,
+            version: version.to_owned(),
+            tx,
+        }
     }
 
     pub fn id(&self) -> &AgentId {
@@ -144,7 +149,7 @@ impl Agent {
     }
 
     pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
-        let topic = self.id.destination_topic(&message)?;
+        let topic = self.id.destination_topic(&message, &self.version)?;
         let qos = message.qos();
         let bytes = message.into_bytes()?;
 
@@ -162,7 +167,7 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(&self.id)?;
+        let mut topic = subscription.subscription_topic(&self.id, &self.version)?;
         if let Some(ref group) = maybe_group {
             topic = format!("$share/{group}/{topic}", group = group, topic = topic);
         };
@@ -783,7 +788,10 @@ impl<T> IncomingRequest<T> {
         OutgoingMessage::new(
             data,
             self.properties.to_response(status, timing),
-            Destination::Unicast(self.properties().as_agent_id().clone()),
+            Destination::Unicast(
+                self.properties.as_agent_id().clone(),
+                self.properties.to_connection().version().to_owned(),
+            ),
         )
     }
 }
@@ -979,14 +987,19 @@ where
         )
     }
 
-    pub fn unicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
+    pub fn unicast<A>(
+        payload: T,
+        properties: OutgoingRequestProperties,
+        to: &A,
+        version: &str,
+    ) -> Self
     where
         A: Addressable,
     {
         OutgoingMessage::new(
             payload,
             properties,
-            Destination::Unicast(to.as_agent_id().clone()),
+            Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
         )
     }
 }
@@ -995,14 +1008,19 @@ impl<T> OutgoingResponse<T>
 where
     T: serde::Serialize,
 {
-    pub fn unicast<A>(payload: T, properties: OutgoingResponseProperties, to: &A) -> Self
+    pub fn unicast<A>(
+        payload: T,
+        properties: OutgoingResponseProperties,
+        to: &A,
+        version: &str,
+    ) -> Self
     where
         A: Addressable,
     {
         OutgoingMessage::new(
             payload,
             properties,
-            Destination::Unicast(to.as_agent_id().clone()),
+            Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
         )
     }
 }
@@ -1104,18 +1122,27 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait DestinationTopic {
-    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error>;
+    fn destination_topic(
+        &self,
+        message: &Box<dyn Publishable>,
+        me_version: &str,
+    ) -> Result<String, Error>;
 }
 
 impl DestinationTopic for AgentId {
-    fn destination_topic(&self, message: &Box<dyn Publishable>) -> Result<String, Error> {
+    fn destination_topic(
+        &self,
+        message: &Box<dyn Publishable>,
+        me_version: &str,
+    ) -> Result<String, Error> {
         let dest = message.destination();
 
         match message.message_type() {
             "event" => match dest {
                 Destination::Broadcast(ref uri) => Ok(format!(
-                    "apps/{app}/api/v1/{uri}",
+                    "apps/{app}/api/{version}/{uri}",
                     app = self.as_account_id(),
+                    version = me_version,
                     uri = uri,
                 )),
                 _ => Err(Error::new(&format!(
@@ -1124,14 +1151,16 @@ impl DestinationTopic for AgentId {
                 ))),
             },
             "request" => match dest {
-                Destination::Unicast(ref agent_id) => Ok(format!(
-                    "agents/{agent_id}/api/v1/in/{app}",
+                Destination::Unicast(ref agent_id, ref version) => Ok(format!(
+                    "agents/{agent_id}/api/{version}/in/{app}",
                     agent_id = agent_id,
+                    version = version,
                     app = self.as_account_id(),
                 )),
                 Destination::Multicast(ref account_id) => Ok(format!(
-                    "agents/{agent_id}/api/v1/out/{app}",
+                    "agents/{agent_id}/api/{version}/out/{app}",
                     agent_id = self,
+                    version = me_version,
                     app = account_id,
                 )),
                 _ => Err(Error::new(&format!(
@@ -1142,9 +1171,10 @@ impl DestinationTopic for AgentId {
             "response" => match message.response_topic() {
                 Some(val) => Ok(val.to_string()),
                 None => match dest {
-                    Destination::Unicast(ref agent_id) => Ok(format!(
-                        "agents/{agent_id}/api/v1/in/{app}",
+                    Destination::Unicast(ref agent_id, ref version) => Ok(format!(
+                        "agents/{agent_id}/api/{version}/in/{app}",
                         agent_id = agent_id,
+                        version = version,
                         app = self.as_account_id(),
                     )),
                     _ => Err(Error::new(&format!(
@@ -1214,20 +1244,21 @@ impl OutgoingProperties for OutgoingResponseProperties {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait SubscriptionTopic {
-    fn subscription_topic<A>(&self, agent_id: &A) -> Result<String, Error>
+    fn subscription_topic<A>(&self, agent_id: &A, me_version: &str) -> Result<String, Error>
     where
         A: Addressable;
 }
 
 impl<'a> SubscriptionTopic for EventSubscription<'a> {
-    fn subscription_topic<A>(&self, _me: &A) -> Result<String, Error>
+    fn subscription_topic<A>(&self, _me: &A, _me_version: &str) -> Result<String, Error>
     where
         A: Addressable,
     {
         match self.source {
-            Source::Broadcast(ref from_account_id, ref uri) => Ok(format!(
-                "apps/{app}/api/v1/{uri}",
+            Source::Broadcast(ref from_account_id, ref version, ref uri) => Ok(format!(
+                "apps/{app}/api/{version}/{uri}",
                 app = from_account_id,
+                version = version,
                 uri = uri,
             )),
             _ => Err(Error::new(&format!(
@@ -1239,28 +1270,32 @@ impl<'a> SubscriptionTopic for EventSubscription<'a> {
 }
 
 impl<'a> SubscriptionTopic for RequestSubscription<'a> {
-    fn subscription_topic<A>(&self, me: &A) -> Result<String, Error>
+    fn subscription_topic<A>(&self, me: &A, me_version: &str) -> Result<String, Error>
     where
         A: Addressable,
     {
         match self.source {
-            Source::Multicast(Some(ref from_agent_id)) => Ok(format!(
-                "agents/{agent_id}/api/v1/out/{app}",
+            Source::Multicast(Some(ref from_agent_id), ver) => Ok(format!(
+                "agents/{agent_id}/api/{version}/out/{app}",
                 agent_id = from_agent_id,
+                version = ver.unwrap_or("+"),
                 app = me.as_account_id(),
             )),
-            Source::Multicast(None) => Ok(format!(
-                "agents/+/api/v1/out/{app}",
+            Source::Multicast(None, ver) => Ok(format!(
+                "agents/+/api/{version}/out/{app}",
+                version = ver.unwrap_or("+"),
                 app = me.as_account_id(),
             )),
             Source::Unicast(Some(ref from_account_id)) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/{app}",
+                "agents/{agent_id}/api/{version}/in/{app}",
                 agent_id = me.as_agent_id(),
+                version = me_version,
                 app = from_account_id,
             )),
             Source::Unicast(None) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/+",
+                "agents/{agent_id}/api/{version}/in/+",
                 agent_id = me.as_agent_id(),
+                version = me_version,
             )),
             _ => Err(Error::new(&format!(
                 "source = '{:?}' is incompatible with request subscription",
@@ -1271,19 +1306,21 @@ impl<'a> SubscriptionTopic for RequestSubscription<'a> {
 }
 
 impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
-    fn subscription_topic<A>(&self, me: &A) -> Result<String, Error>
+    fn subscription_topic<A>(&self, me: &A, me_version: &str) -> Result<String, Error>
     where
         A: Addressable,
     {
         match self.source {
             Source::Unicast(Some(ref from_account_id)) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/{app}",
+                "agents/{agent_id}/api/{version}/in/{app}",
                 agent_id = me.as_agent_id(),
+                version = me_version,
                 app = from_account_id,
             )),
             Source::Unicast(None) => Ok(format!(
-                "agents/{agent_id}/api/v1/in/+",
+                "agents/{agent_id}/api/{version}/in/+",
                 agent_id = me.as_agent_id(),
+                version = me_version,
             )),
             _ => Err(Error::new(&format!(
                 "source = '{:?}' is incompatible with response subscription",
