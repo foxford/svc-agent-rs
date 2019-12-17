@@ -37,29 +37,27 @@ impl AgentConfig {
 #[derive(Debug)]
 pub struct AgentBuilder {
     connection: Connection,
+    api_version: String,
 }
 
 impl AgentBuilder {
-    pub fn new(agent_id: AgentId) -> Self {
+    pub fn new(agent_id: AgentId, api_version: &str) -> Self {
         Self {
             connection: Connection::new(agent_id),
+            api_version: api_version.to_owned(),
         }
     }
 
-    pub fn version(self, version: &str) -> Self {
+    pub fn connection_version(self, version: &str) -> Self {
         let mut connection = self.connection;
         connection.set_version(version);
-        Self {
-            connection: connection,
-        }
+        Self { connection, ..self }
     }
 
-    pub fn mode(self, mode: ConnectionMode) -> Self {
+    pub fn connection_mode(self, mode: ConnectionMode) -> Self {
         let mut connection = self.connection;
         connection.set_mode(mode);
-        Self {
-            connection: connection,
-        }
+        Self { connection, ..self }
     }
 
     pub fn start(
@@ -70,7 +68,7 @@ impl AgentBuilder {
         let (tx, rx) = rumqtt::MqttClient::start(options)
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
-        let agent = Agent::new(self.connection.agent_id, &self.connection.version, tx);
+        let agent = Agent::new(self.connection.agent_id, &self.api_version, tx);
         Ok((agent, rx))
     }
 
@@ -131,15 +129,15 @@ impl AgentBuilder {
 #[derive(Clone)]
 pub struct Agent {
     id: AgentId,
-    version: String,
+    api_version: String,
     tx: rumqtt::MqttClient,
 }
 
 impl Agent {
-    fn new(id: AgentId, version: &str, tx: rumqtt::MqttClient) -> Self {
+    fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
         Self {
             id,
-            version: version.to_owned(),
+            api_version: api_version.to_owned(),
             tx,
         }
     }
@@ -149,7 +147,7 @@ impl Agent {
     }
 
     pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
-        let topic = self.id.destination_topic(&message, &self.version)?;
+        let topic = self.id.destination_topic(&message, &self.api_version)?;
         let qos = message.qos();
         let bytes = message.into_bytes()?;
 
@@ -167,7 +165,7 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(&self.id, &self.version)?;
+        let mut topic = subscription.subscription_topic(&self.id, &self.api_version)?;
         if let Some(ref group) = maybe_group {
             topic = format!("$share/{group}/{topic}", group = group, topic = topic);
         };
@@ -781,6 +779,7 @@ impl<T> IncomingRequest<T> {
         data: R,
         status: ResponseStatus,
         timing: ShortTermTimingProperties,
+        api_version: &str,
     ) -> OutgoingResponse<R>
     where
         R: serde::Serialize,
@@ -790,7 +789,7 @@ impl<T> IncomingRequest<T> {
             self.properties.to_response(status, timing),
             Destination::Unicast(
                 self.properties.as_agent_id().clone(),
-                self.properties.to_connection().version().to_owned(),
+                api_version.to_owned(),
             ),
         )
     }
