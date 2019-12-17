@@ -125,27 +125,30 @@ impl FromStr for SharedGroup {
 
 #[derive(Debug)]
 pub enum Destination {
-    // -> event(app-to-any): apps/ACCOUNT_ID(ME)/api/v1/BROADCAST_URI
+    // -> event(app-to-any): apps/ACCOUNT_ID(ME)/api/VER(ME)/BROADCAST_URI
     Broadcast(String),
-    // -> request(one-to-app): agents/AGENT_ID(ME)/api/v1/out/ACCOUNT_ID
+    // -> request(one-to-app): agents/AGENT_ID(ME)/api/VER(ME)/out/ACCOUNT_ID
     Multicast(AccountId),
-    // -> request(one-to-one): agents/AGENT_ID/api/v1/in/ACCOUNT_ID(ME)
-    // -> response(one-to-one): agents/AGENT_ID/api/v1/in/ACCOUNT_ID(ME)
-    Unicast(AgentId),
+    // -> request(one-to-one): agents/AGENT_ID/api/VER/in/ACCOUNT_ID(ME)
+    // -> response(one-to-one): agents/AGENT_ID/api/VER/in/ACCOUNT_ID(ME)
+    Unicast(AgentId, String),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
 pub enum Source<'a> {
-    // <- event(any-from-app): apps/ACCOUNT_ID/api/v1/BROADCAST_URI
-    Broadcast(&'a AccountId, &'a str),
-    // <- request(app-from-any): agents/+/api/v1/out/ACCOUNT_ID(ME)
-    Multicast(Option<&'a AgentId>),
-    // <- request(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
-    // <- request(one-from-any): agents/AGENT_ID(ME)/api/v1/in/+
-    // <- response(one-from-one): agents/AGENT_ID(ME)/api/v1/in/ACCOUNT_ID
-    // <- response(one-from-any): agents/AGENT_ID(ME)/api/v1/in/+
+    // <- event(any-from-app): apps/ACCOUNT_ID/api/VER/BROADCAST_URI
+    Broadcast(&'a AccountId, &'a str, &'a str),
+    // <- request(app-from-any): agents/+/api/+/out/ACCOUNT_ID(ME)
+    // <- request(app-from-any): agents/+/api/VER/out/ACCOUNT_ID(ME)
+    // <- request(app-from-any): agents/AGENT_ID/api/+/out/ACCOUNT_ID(ME)
+    // <- request(app-from-any): agents/AGENT_ID/api/VER/out/ACCOUNT_ID(ME)
+    Multicast(Option<&'a AgentId>, Option<&'a str>),
+    // <- request(one-from-one): agents/AGENT_ID(ME)/api/VER(ME)/in/ACCOUNT_ID
+    // <- request(one-from-any): agents/AGENT_ID(ME)/api/VER(ME)/in/+
+    // <- response(one-from-one): agents/AGENT_ID(ME)/api/VER(ME)/in/ACCOUNT_ID
+    // <- response(one-from-any): agents/AGENT_ID(ME)/api/VER(ME)/in/+
     Unicast(Option<&'a AccountId>),
 }
 
@@ -154,22 +157,29 @@ pub enum Source<'a> {
 pub struct Subscription {}
 
 impl Subscription {
-    pub fn broadcast_events<'a, A>(from: &'a A, uri: &'a str) -> EventSubscription<'a>
+    pub fn broadcast_events<'a, A>(
+        from: &'a A,
+        version: &'a str,
+        uri: &'a str,
+    ) -> EventSubscription<'a>
     where
         A: Authenticable,
     {
-        EventSubscription::new(Source::Broadcast(from.as_account_id(), uri))
+        EventSubscription::new(Source::Broadcast(from.as_account_id(), version, uri))
     }
 
-    pub fn multicast_requests<'a>() -> RequestSubscription<'a> {
-        RequestSubscription::new(Source::Multicast(None))
+    pub fn multicast_requests<'a>(version: Option<&'a str>) -> RequestSubscription<'a> {
+        RequestSubscription::new(Source::Multicast(None, version))
     }
 
-    pub fn multicast_requests_from<A>(from: &A) -> RequestSubscription
+    pub fn multicast_requests_from<'a, A>(
+        from: &'a A,
+        version: Option<&'a str>,
+    ) -> RequestSubscription<'a>
     where
         A: Addressable,
     {
-        RequestSubscription::new(Source::Multicast(Some(from.as_agent_id())))
+        RequestSubscription::new(Source::Multicast(Some(from.as_agent_id()), version))
     }
 
     pub fn unicast_requests<'a>() -> RequestSubscription<'a> {
