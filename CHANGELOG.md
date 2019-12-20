@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.10.0 (December 20, 2019)
+
+### Features
+- Upgrade to v2 connection ([991f2b4](https://github.com/netology-group/svc-agent-rs/commit/991f2b484ea0082a5fee770f3ebd0dd4ddc870ef))
+- Parametrize version in topics ([6feb43b](https://github.com/netology-group/svc-agent-rs/commit/6feb43b12c8d26d62f7de4978b468483d7807a5f))
+- Separate API version from connection version ([49fc797](https://github.com/netology-group/svc-agent-rs/commit/49fc797649e8057f56045715f256804e45b0ffe8))
+- Derive `Clone` & `Serialize` for `IncomingEventProperties` ([da9c574](https://github.com/netology-group/svc-agent-rs/commit/da9c5749bb9e07f3b08a6a5a9852c9043bef30c6))
+
+
 ## v0.9.5 (November 21, 2019)
 
 ### Fixes
