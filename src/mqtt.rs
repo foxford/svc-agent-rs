@@ -838,6 +838,7 @@ pub struct OutgoingRequestProperties {
     method: String,
     correlation_data: String,
     response_topic: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_id: Option<AgentId>,
     #[serde(flatten)]
     long_term_timing: Option<LongTermTimingProperties>,
