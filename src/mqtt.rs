@@ -16,6 +16,18 @@ use crate::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Agent configuration.
+///
+/// # Options
+///
+/// * `uri` – MQTT broker URI (required).
+/// * `clean_session` – whether to start a clean sessinon or continue the persisted session.
+/// Default: `true`.
+/// * `keep_alive_interval` – keep alive time to ping the broker. Default: 30 sec.
+/// * `reconnect_interval` – reconnection attempts interval. Default: 10 sec.
+/// * `outgoing_message_queue_size` – maximum messages in-flight. Default: 100.
+/// * `incomming_message_queue_size` – notification channel capacity. Default: 10.
+/// * `password` – MQTT broker password.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentConfig {
     uri: String,
@@ -28,12 +40,17 @@ pub struct AgentConfig {
 }
 
 impl AgentConfig {
+    /// Sets `password` field to the config.
+    ///
+    /// Use if you don't store the password in the config file but in an environment variable,
+    /// somewhere else or generate an access token in runtime.
     pub fn set_password(&mut self, value: &str) -> &mut Self {
         self.password = Some(value.to_owned());
         self
     }
 }
 
+/// An agent builder.
 #[derive(Debug)]
 pub struct AgentBuilder {
     connection: Connection,
@@ -41,6 +58,20 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Creates a new [AgentBuilder](struct.AgentBuilder.html).
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_id` – [AgentId](../struct.AgentId.html) to connect as.
+    /// * `api_version` – agent's API version string.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// ket account_id = AccountId::new("service_name", "svc.example.org");
+    /// let agent_id = AgentId::new("instance01", account_id);
+    /// let builder = AgentBuilder::new(agent_id, "v1");
+    /// ```
     pub fn new(agent_id: AgentId, api_version: &str) -> Self {
         Self {
             connection: Connection::new(agent_id),
@@ -48,18 +79,60 @@ impl AgentBuilder {
         }
     }
 
+    /// Sets a connection version.
+    ///
+    /// This is different from agent's API version.
+    /// Connection version is the version of conventions that this library implements.
+    /// Currently it's `v2` but if you know what you're doing you may override it.
     pub fn connection_version(self, version: &str) -> Self {
         let mut connection = self.connection;
         connection.set_version(version);
         Self { connection, ..self }
     }
 
+    /// Sets a connection mode for the agent to claim.
+    ///
+    /// Connection mode defines a level a privileges an agent may use.
+    /// See [ConnectionMode](enum.ConnectionMode.html) for available modes and details.
+    ///
+    /// The broker requires authorization to use the claimed mode and may refuse the connection
+    /// if not authorized.
     pub fn connection_mode(self, mode: ConnectionMode) -> Self {
         let mut connection = self.connection;
         connection.set_mode(mode);
         Self { connection, ..self }
     }
 
+    /// Starts an MQTT client and in case of successfull connection returns a tuple containing
+    /// an [Agent](struct.Agent.html) instance and a channel receiver which one can
+    /// iterate over to get incoming messages.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let (agent, rx) = builder.start(&config)?;
+    ///
+    /// // Subscribe to requests.
+    /// agent.subscribe(
+    ///     &Subscription::multicast_requests(Some("v1")),
+    ///     QoS::AtMostOnce,
+    ///     Some(&group),
+    /// )?;
+    ///
+    /// // Message handling loop.
+    /// for notification in rx {
+    ///     match notification {
+    ///         svc_agent::mqtt::Notification::Publish(message) => {
+    ///             println!(
+    ///                 "Incoming message: {} to topic {}",
+    ///                 message.payload.as_slice(),
+    ///                 message.topic_name
+    ///             );
+    ///         }
+    ///         _ => ()
+    ///     }
+    /// }
+    /// ```
     pub fn start(
         self,
         config: &AgentConfig,
@@ -146,6 +219,31 @@ impl Agent {
         &self.id
     }
 
+    /// Publish a message.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` – a boxed message of any type implementing
+    /// [Publishable](trait.Publishable.html) trait.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = OutgoingRequestProperties::new(
+    ///     "system.ping",
+    ///     Subscription::unicast_responses_from(to).subscription_topic(agent.id(), "v1")?,
+    ///     "random-string-123",
+    ///     ShortTermTimingProperties::new(Utc::now()),
+    /// );
+    ///
+    /// let message = OutgoingMessage::new(
+    ///     json!({ "ping": "hello" }),
+    ///     props,
+    ///     Destination::Unicast(agent.id().clone(), "v1"),
+    /// );
+    ///
+    /// agent.publish(Box::new(message))?;
+    /// ```
     pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
         let topic = self.id.destination_topic(&message, &self.api_version)?;
         let qos = message.qos();
@@ -156,6 +254,23 @@ impl Agent {
             .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
     }
 
+    /// Subscribe to a topic.
+    ///
+    /// # Arguments
+    ///
+    /// * `subscription` – the [Subscription](struct.Subscription.html).
+    /// * `qos` – quality of service. See [QoS](enum.QoS.html) for available values.
+    /// * `maybe_group` – [SharedGroup](struct.SharedGroup.html) in case of multicast subscription.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// agent.subscribe(
+    ///     &Subscription::multicast_requests(Some("v1")),
+    ///     QoS::AtMostOnce,
+    ///     Some(&group),
+    /// )?;
+    /// ```
     pub fn subscribe<S>(
         &mut self,
         subscription: &S,
@@ -179,11 +294,28 @@ impl Agent {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Connection mode of an agent that defines the level of privileges.
 #[derive(Debug, Clone)]
 pub enum ConnectionMode {
+    /// This mode locks the agent in his home topic allowing to publish and subscribe only to
+    /// topics that start with `agent/AGENT_ID/api/`.
+    ///
+    /// It must be used by end user agents.
     Default,
+    /// This mode allows the agent to publish to any topic.
+    /// It enables the service to send responses to end users and other services.
+    ///
+    /// It mode must be used by regular service agents.
     Service,
+    /// This mode allows also subscribing to any topic.
+    ///
+    /// It shouldn't generally be used at all in production environment but may be useful for
+    /// debugging and administrating.
     Observer,
+    /// This mode allows publishing messages on behalf of another agent.
+    ///
+    /// It's intended for bridge service only that enable interaction with the system through
+    /// protocols different from MQTT.
     Bridge,
 }
 
@@ -323,6 +455,20 @@ impl Addressable for ConnectionProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Timing properties that persist through a message chain.
+///
+/// See [ShortTermTimingProperties](ShortTermTimingProperties.html) for more explanation
+/// on timings.
+///
+/// There are two kinds of properties: regular an cumulative.
+/// Regular properties just get proxied without change to the next message in the chain.
+/// Cumulative properties sum corresponding values from
+/// [ShortTermTimingProperties](ShortTermTimingProperties.html).
+///
+/// If you use methods like [to_response](type.IncomingRequest.html#method.to_response),
+/// [to_request](struct.IncomingRequestProperties.html#method.to_request),
+/// [to_event](struct.IncomingEventProperties.html#method.to_event) and similar then
+/// you shouldn't think about long term timings since they already take care of all these things.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LongTermTimingProperties {
     #[serde(
@@ -358,6 +504,46 @@ pub struct LongTermTimingProperties {
 }
 
 impl LongTermTimingProperties {
+    /// Updates cumulative values with the given
+    /// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) values.
+    ///
+    /// Prefer using [to_response](type.IncomingRequest.html#method.to_response) and similar
+    /// methods for building responses. If you by any chance can't use them but still want
+    /// to pass [LongTermTimingProperties](struct.LongTermTimingProperties.html) manually
+    /// then this is the method to call to keep timings consistent.
+    ///
+    /// # Arguments
+    ///
+    /// * `short_timing` – a reference to
+    /// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) object with
+    /// values to increase long term timings with.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    ///
+    /// let long_term_timing = response
+    ///     .properties()
+    ///     .long_term_timing()
+    ///     .clone()
+    ///     .update_cumulative_timings(&short_term_timing);
+    ///
+    /// let props = OutgoingResponseProperties::new(
+    ///     response.properties().status(),
+    ///     request.correlation_data(),
+    ///     long_term_timing,
+    ///     short_term_timing,
+    ///     response.properties().tracking().clone(),
+    /// );
+    ///
+    /// let message = OutgoingResponse::unicast(
+    ///     response.payload().to_owned(),
+    ///     props,
+    ///     request.properties(),
+    ///     "v1"
+    /// );
+    /// ```
     pub fn update_cumulative_timings(self, short_timing: &ShortTermTimingProperties) -> Self {
         let cumulative_authorization_time = short_timing
             .authorization_time
@@ -383,6 +569,41 @@ impl LongTermTimingProperties {
     }
 }
 
+/// Timing properties of a single message in a chain.
+///
+/// Consider a service that receives a request and in part makes a request to another service.
+/// The second service sends the response and then first services sends the response to the client.
+/// Here we have a chain of four messages: request -> request -> response -> response.
+///
+/// For monitoring and analytical purposes it's useful to know how long it takes as a whole
+/// and which part of the system make the biggest latency.
+///
+/// The conventions contain a number of properties that messages must contain.
+///
+/// For API simplicity in svc-agent they are separated in two structs.
+/// Those which gets passed through the whole chain are
+/// [LongTermTimingProperties](LongTermTimingProperties.html) and those which are related
+/// only to a single message in the chain are in this struct.
+///
+/// When starting processing a request you should save the current time and when it's finished
+/// you should call `until_now`(#method.until_now) function with this value and then pass the
+/// result object to [OutgoingMessageProperties](struct.OutgoingMessageProperties.html).
+///
+/// If you make an authorization call to an external system during the processing you may want to
+/// meausure it during the call and set it to the object to monitor authorization latency as well.
+///
+/// # Example
+///
+/// ```
+/// let start_timestamp = Utc::now();
+/// let authz_time = authorize(&request)?;
+/// let response_payload = process_request(&request)?;
+/// 
+/// let mut short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+/// short_term_timing.set_authorization_time(authz_time);
+/// 
+/// request.to_response(response_payload, ResponeStatus::OK, short_term_timing, "v1")
+/// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShortTermTimingProperties {
     #[serde(with = "ts_milliseconds_string")]
@@ -402,6 +623,18 @@ pub struct ShortTermTimingProperties {
 }
 
 impl ShortTermTimingProperties {
+    /// Builds [ShortTermTimingProperties](ShortTermTimingProperties.html) and sets
+    /// processing time in one call.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_timestamp` – UTC timestamp of message processing beginning.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// ```
     pub fn until_now(start_timestamp: DateTime<Utc>) -> Self {
         let now = Utc::now();
         let mut timing = Self::new(now);
@@ -409,6 +642,18 @@ impl ShortTermTimingProperties {
         timing
     }
 
+    /// Builds [ShortTermTimingProperties](ShortTermTimingProperties.html)
+    /// by explicit timestamp.
+    ///
+    /// # Arguments
+    ///
+    /// `timestamp` – UTC timestamp of message processing finish.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut short_term_timing = ShortTermTimingProperties::until_now(Utc::now());
+    /// ```
     pub fn new(timestamp: DateTime<Utc>) -> Self {
         Self {
             timestamp,
@@ -430,6 +675,7 @@ impl ShortTermTimingProperties {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+/// Tracking session ID.
 #[derive(Clone, Debug)]
 pub struct SessionId {
     agent_session_label: Uuid,
@@ -439,6 +685,8 @@ pub struct SessionId {
 impl FromStr for SessionId {
     type Err = Error;
 
+    /// Parses a [SessionId](struct.SessionId.html) from a string of two UUIDs
+    /// separated by a dot.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let components = s.splitn(2, ".").collect::<Vec<&str>>();
 
@@ -469,6 +717,7 @@ impl FromStr for SessionId {
 }
 
 impl fmt::Display for SessionId {
+    /// Dumps a [SessionId](struct.SessionId.html) to a string of two UUIDs separated by a dot.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             f,
@@ -478,6 +727,7 @@ impl fmt::Display for SessionId {
     }
 }
 
+/// Message chain ID.
 #[derive(Clone, Debug)]
 pub struct TrackingId {
     label: Uuid,
@@ -487,6 +737,8 @@ pub struct TrackingId {
 impl FromStr for TrackingId {
     type Err = Error;
 
+    /// Parses a [TrackingId](struct.TrackingId.html) from a string of three UUIDs
+    /// separated by a dot.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let components = s.splitn(2, ".").collect::<Vec<&str>>();
 
@@ -510,11 +762,23 @@ impl FromStr for TrackingId {
 }
 
 impl fmt::Display for TrackingId {
+    /// Dumps a [TrackingId](struct.TrackingId.html) to a string of three UUIDs separated by a
+    /// dot.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}.{}", self.label, self.session_id)
     }
 }
 
+/// Message tracking properties.
+///
+/// Apart from [LongTermTimingProperties](struct.LongTermTimingProperties.html) and
+/// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) there are also
+/// tracking properties. They get assigned by the broker but since the decision on whether to
+/// continue the chain by the next message either start a new chain is up to the agent,
+/// tracking properties needs to be proxied in the former case.
+///
+/// Proxying is performed by [to_response](type.IncomingRequest.html#method.to_response) and
+/// the like methods.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TrackingProperties {
     tracking_id: TrackingId,
@@ -526,6 +790,7 @@ pub struct TrackingProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Properties of an incoming event message.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IncomingEventProperties {
     #[serde(flatten)]
@@ -550,6 +815,22 @@ impl IncomingEventProperties {
         &self.tracking
     }
 
+    /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html) based on the
+    /// [IncomingEventProperties](struct.IncomingEventProperties.html).
+    ///
+    /// Use it to dispatch an event as a reaction on another event.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` – outgoing event label.
+    /// * `short_term_timing` – outgoing event's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let out_props = in_props.to_event("agent.enter", short_term_timing);
+    /// ```
     pub fn to_event(
         &self,
         label: &'static str,
@@ -584,6 +865,7 @@ impl Addressable for IncomingEventProperties {
     }
 }
 
+/// Properties of an incoming request.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IncomingRequestProperties {
     method: String,
@@ -623,6 +905,23 @@ impl IncomingRequestProperties {
         self.conn.to_connection()
     }
 
+    /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html) based on the
+    /// [IncomingRequestProperties](struct.IncomingRequestProperties.html).
+    ///
+    /// Use it to publish an event when something worth notifying subscribers happens during
+    /// the request processing.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` – outgoing event label.
+    /// * `short_term_timing` – outgoing event's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let out_props = in_props.to_event("agent.enter", short_term_timing);
+    /// ```
     pub fn to_event(
         &self,
         label: &'static str,
@@ -635,6 +934,27 @@ impl IncomingRequestProperties {
         props
     }
 
+    /// Builds [OutgoingRequestProperties](struct.OutgoingRequestProperties.html) based on the
+    /// [IncomingRequestProperties](struct.IncomingRequestProperties.html).
+    ///
+    /// Use it to send a request to another service while handling a request.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` – request method.
+    /// * `response_topic` – topic for response.
+    /// * `correlation_data` – any string to correlate request with response.
+    /// * `short_term_timing` – outgoing request's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let out_props = in_props.to_request(
+    ///     "room.enter",
+    ///     &Subscription::unicast_responses(),
+    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    /// );
+    /// ```
     pub fn to_request(
         &self,
         method: &str,
@@ -656,6 +976,22 @@ impl IncomingRequestProperties {
         props
     }
 
+    /// Builds [OutgoingResponseProperties](struct.OutgoingResponseProperties.html) based on
+    /// the [IncomingRequestProperties](struct.IncomingRequestProperties.html).
+    ///
+    /// Use it to response on a request.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` – response status.
+    /// * `short_term_timing` – outgoing response's short term timings properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let out_props = in_props.to_response(ResponseStatus::OK, short_term_timing);
+    /// ```
     pub fn to_response(
         &self,
         status: ResponseStatus,
@@ -695,6 +1031,7 @@ impl Addressable for IncomingRequestProperties {
     }
 }
 
+/// Properties of an incoming response.
 #[derive(Debug, Deserialize)]
 pub struct IncomingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
@@ -744,6 +1081,7 @@ impl Addressable for IncomingResponseProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A generic received message.
 #[derive(Debug)]
 pub struct IncomingMessage<T, P>
 where
@@ -774,6 +1112,26 @@ where
 }
 
 impl<T> IncomingRequest<T> {
+    /// Builds [OutgoingResponse](OutgoingResponse.html) based on
+    /// the [IncomingRequest](IncomingRequest.html).
+    ///
+    /// Use it to response on a request.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` – serializable response payload.
+    /// * `status` – response status.
+    /// * `timing` – outgoing response's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let response = request.to_response(
+    ///     json!({ "foo": "bar" }),
+    ///     ResponseStatus::OK,
+    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    /// );
+    /// ```
     pub fn to_response<R>(
         &self,
         data: R,
@@ -801,6 +1159,7 @@ pub type IncomingResponse<T> = IncomingMessage<T, IncomingResponseProperties>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Properties of an outgoing event.
 #[derive(Debug, Serialize)]
 pub struct OutgoingEventProperties {
     label: &'static str,
@@ -813,6 +1172,28 @@ pub struct OutgoingEventProperties {
 }
 
 impl OutgoingEventProperties {
+    /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html).
+    ///
+    /// Use this function only if you're dispatching an event from scratch.
+    ///
+    /// If you make a reaction event on an incoming request or another event consider using
+    /// [IncomingRequestProperties::to_event](struct.IncomingRequestProperties.html#method.to_event)
+    /// or [IncomingEventProperties::to_event](struct.IncomingEventProperties.html#method.to_event)
+    /// respectively.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` – event label.
+    /// * `short_term_timing` – event's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = OutgoingEventProperties::new(
+    ///     "agent.enter",
+    ///     ShortTermTimingProperties::new(Utc::now()),
+    /// );
+    /// ```
     pub fn new(label: &'static str, short_term_timing: ShortTermTimingProperties) -> Self {
         Self {
             label,
@@ -833,6 +1214,7 @@ impl OutgoingEventProperties {
     }
 }
 
+/// Properties of an outgoing request.
 #[derive(Debug, Serialize)]
 pub struct OutgoingRequestProperties {
     method: String,
@@ -849,6 +1231,29 @@ pub struct OutgoingRequestProperties {
 }
 
 impl OutgoingRequestProperties {
+    /// Builds [OutgoingRequestProperties](struct.OutgoingRequestProperties.html).
+    ///
+    /// Use this function only if you're making a request from scratch.
+    ///
+    /// If you make a request while handling another request consider using
+    /// [IncomingRequestProperties::to_request](struct.IncomingRequestProperties.html#method.to_request).
+    ///
+    /// # Arguments
+    ///
+    /// * `method` – request method.
+    /// * `response_topic` – a topic to send the response to the request to.
+    /// * `correlation_data` – any string to correlate request with the upcoming response.
+    /// * `short_term_timing` – outgoing request's short term timing properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = OutgoingRequestProperties::new(
+    ///     "system.vacuum",
+    ///     &Subscription::unicast_responses(),
+    ///     ShortTermTimingProperties::new(Utc::now()),
+    /// );
+    /// ```
     pub fn new(
         method: &str,
         response_topic: &str,
@@ -886,6 +1291,7 @@ impl OutgoingRequestProperties {
     }
 }
 
+/// Properties of an outgoing response.
 #[derive(Debug, Serialize)]
 pub struct OutgoingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
@@ -902,6 +1308,34 @@ pub struct OutgoingResponseProperties {
 }
 
 impl OutgoingResponseProperties {
+    /// Builds [OutgoingResponseProperties](struct.OutgoingResponseProperties.html).
+    ///
+    /// Generally you shouldn't use this function and consider using
+    /// [IncomingRequestProperties::to_response](struct.IncomingRequestProperties.html#method.to_respone)
+    /// because all outgoing responses are related to an incoming request to respond to.
+    /// However if you need to customize the response creation you may want to call this constructor
+    /// directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` – HTTP-compatible status code.
+    /// * `correlation_data` – a correlation string between request and response. 
+    /// It has meaning to the sender of the request message and receiver of the response message.
+    /// * `long_term_timing` – outgoing response's long term timing properties.
+    /// * `short_term_timing` – outgoing response's short term timing properties.
+    /// * `tracking_properties` – outgoing response's short term tracking properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let resp_props = OutgoingResponseProperties::new(
+    ///     ResponseStatus::OK,
+    ///     req_props.correlation_data().clone(),
+    ///     req_props.long_term_timing().clone(),
+    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     req_props.tracking().clone(),
+    /// );
+    /// ```
     pub fn new(
         status: ResponseStatus,
         correlation_data: &str,
@@ -926,10 +1360,12 @@ impl OutgoingResponseProperties {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// HTTP status code.
 pub type ResponseStatus = http::StatusCode;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A generic received message.
 #[derive(Debug)]
 pub struct OutgoingMessage<T, P>
 where
@@ -963,6 +1399,26 @@ impl<T> OutgoingEvent<T>
 where
     T: serde::Serialize,
 {
+    /// Builds a broadcast event to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing event.
+    /// * `to_uri` – broadcast resource path.
+    /// See [Destination](../enum.Destination#variant.Broadcast) for details.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    ///
+    /// let message = OutgoingEvent::broadcast(
+    ///     json!({ "foo": "bar" }),
+    ///     request.to_event("message.create", short_term_timing),
+    ///     "rooms/123/events",
+    /// );
+    /// ```
     pub fn broadcast(payload: T, properties: OutgoingEventProperties, to_uri: &str) -> Self {
         OutgoingMessage::new(
             payload,
@@ -976,6 +1432,25 @@ impl<T> OutgoingRequest<T>
 where
     T: serde::Serialize,
 {
+    /// Builds a multicast request to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing request.
+    /// * `to` – destination [AccountId](../struct.AccountId.html).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = request.to_request(
+    ///     "room.enter",
+    ///     &Subscription::unicast_responses(),
+    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    /// );
+    ///
+    /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props);
+    /// ```
     pub fn multicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
     where
         A: Authenticable,
@@ -987,6 +1462,27 @@ where
         )
     }
 
+    /// Builds a unicast request to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing request.
+    /// * `to` – destination [AgentId](../struct.AgentId.html).
+    /// * `version` – destination agent's API version.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = request.to_request(
+    ///     "room.enter",
+    ///     &Subscription::unicast_responses(),
+    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    /// );
+    ///
+    /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
+    /// let message = OutgoingRequest::unicast(json!({ "foo": "bar" }), props, to, "v1");
+    /// ```
     pub fn unicast<A>(
         payload: T,
         properties: OutgoingRequestProperties,
@@ -1008,6 +1504,23 @@ impl<T> OutgoingResponse<T>
 where
     T: serde::Serialize,
 {
+    /// Builds a unicast response to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing response.
+    /// * `to` – destination [AgentId](../struct.AgentId.html).
+    /// * `version` – destination agent's API version.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let props = request.properties().to_response(ResponseStatus::OK, short_term_timing)
+    /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
+    /// let message = OutgoingResponse::unicast(json!({ "foo": "bar" }), props, to, "v1");
+    /// ```
     pub fn unicast<A>(
         payload: T,
         properties: OutgoingResponseProperties,
@@ -1079,11 +1592,17 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Something that can be published.
 pub trait Publishable {
+    /// Returns `"request"`, `"response"`, or `"event"`.
     fn message_type(&self) -> &'static str;
+    /// Where to publish.
     fn destination(&self) -> &Destination;
+    /// Quality of service.
     fn qos(&self) -> QoS;
+    /// Topic to send the response to in case of `"request"` message type.
     fn response_topic(&self) -> Option<&str>;
+    /// Payload as binary.
     fn into_bytes(self: Box<Self>) -> Result<String, Error>;
 }
 
@@ -1122,6 +1641,18 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait DestinationTopic {
+    /// Returns a destination topic as string.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` – an outgoing message for which the destination topic is being returned.
+    /// * `me_version` – API version of the current agent.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let topic = agent_id.destination_topic(&boxed_message, "v1")?;
+    /// ```
     fn destination_topic(
         &self,
         message: &Box<dyn Publishable>,
@@ -1193,9 +1724,13 @@ impl DestinationTopic for AgentId {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Properties of an outgoing message.
 pub trait OutgoingProperties {
+    /// Returns `"request"`, `"response"` or `"event"`.
     fn message_type(&self) -> &'static str;
+    /// Quality of service.
     fn qos(&self) -> QoS;
+    /// Topic to send the response to in case of `"request"` message type.
     fn response_topic(&self) -> Option<&str>;
 }
 
@@ -1244,6 +1779,21 @@ impl OutgoingProperties for OutgoingResponseProperties {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait SubscriptionTopic {
+    /// Returns a topic to subscribe to as string.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_id` – current agent's [AgentId](../struct.AgentId.html).
+    /// * `me_version` – current agent's API version.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let me = AgentId::new("instance01", AccountId::new("me_name", "svc.example.org"));
+    /// let agent = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
+    /// let subscription = Subscription::broadcast_events(&agent, "v1", "rooms/123/events");
+    /// let topic = subscription.subscription_topic(me, "v1")?;
+    /// ```
     fn subscription_topic<A>(&self, agent_id: &A, me_version: &str) -> Result<String, Error>
     where
         A: Addressable;
@@ -1332,6 +1882,77 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// MQTT 3.1 compatibility utilities.
+///
+/// [mqtt-gateway](https://github.com/netology-group/mqtt-gateway) supports both MQTT 3.1 and MQTT 5
+/// protocol versions. However svc-agent is based on [rumqtt](https://github.com/AtherEnergy/rumqtt)
+/// MQTT client which only supports MQTT 3.1 because there's no pure Rust implementation of MQTT 5
+/// client yet.
+///
+/// MQTT 5 introduces message properties that are somewhat like HTTP headers.
+/// An alternative for them in MQTT 3.1 is to send this data right in the message payload.
+/// So [mqtt-gateway](https://github.com/netology-group/mqtt-gateway) supports the envelope
+/// payload format convention which looks like this:
+///
+/// ```json
+/// {
+///     "payload": "{ … }",
+///     "properties": {
+///         "name": "value"
+///     }
+/// }
+/// ```
+///
+/// `payload` is the payload itself. Even if it's a JSON object by itself it needs to be serialized
+/// to string.
+///
+/// `properties` is an object of name-value pairs. All values must be strings.
+///
+/// [mqtt-gateway](https://github.com/netology-group/mqtt-gateway) does a translation between
+/// MQTT 3.1 envelope and plain MQTT 5 formats so clients may talk to each other using
+/// different versions of the protocol. When an MQTT 5 client sends a message to an MQTT 3.1 client
+/// it sends plain payload and properties using MQTT 5 features but latter client receives
+/// it in the envelope format. And vice versa: published an MQTT 3.1 envelope will be received
+/// as a plain MQTT 5 messsage by an MQTT 5 client.
+///
+/// This module implements the agent's part of this convention.
+///
+/// Use [serde](http://github.com/serde-rs/serde) to parse an incoming envelope.
+/// Here's an example on how to parse an incoming message:
+///
+/// ```
+/// #[derive(DeserializeOwned)]
+/// struct RoomEnterRequestPayload {
+///     room_id: usize,
+/// }
+///
+/// let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(payload)?;
+///
+/// match envelope.properties() {
+///     compat::IncomingEnvelopeProperties::Request(ref reqp) => {
+///         // Request routing by method property
+///         match reqp.method() {
+///             "room.enter" => match compat::into_request::<RoomEnterRequestPayload>(envelope) {
+///                 Ok(request) => {
+///                     // Handle request.
+///                 }
+///                 Err(err) => {
+///                     // Bad request: failed to parse payload for this method.
+///                 }
+///             }
+///         }
+///     }
+///     compat::IncomingEnvelopeProperties::Response(ref respp) => {
+///         // The same for response.
+///     }
+///     compat::IncomingEnvelopeProperties::Response(ref respp) => {
+///         // The same for events.
+///     }
+/// }
+/// ```
+///
+/// Enveloping of outgoing messages is up to svc-agent.
+/// Just use (Agent::publish)[../struct.Agent.html#method.publish] method to publish messages.
 pub mod compat {
     use serde_derive::{Deserialize, Serialize};
 
@@ -1344,6 +1965,7 @@ pub mod compat {
 
     ////////////////////////////////////////////////////////////////////////////////
 
+    /// Enveloped properties of an incoming message.
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[serde(tag = "type")]
@@ -1353,6 +1975,7 @@ pub mod compat {
         Response(IncomingResponseProperties),
     }
 
+    /// Incoming enveloped message.
     #[derive(Debug, Deserialize)]
     pub struct IncomingEnvelope {
         payload: String,
@@ -1378,6 +2001,7 @@ pub mod compat {
         }
     }
 
+    /// Parses an incoming envelope as an event with payload of type `T`.
     pub fn into_event<T>(envelope: IncomingEnvelope) -> Result<IncomingEvent<T>, Error>
     where
         T: serde::de::DeserializeOwned,
@@ -1389,6 +2013,7 @@ pub mod compat {
         }
     }
 
+    /// Parses an incoming envelope as a request with payload of type `T`.
     pub fn into_request<T>(envelope: IncomingEnvelope) -> Result<IncomingRequest<T>, Error>
     where
         T: serde::de::DeserializeOwned,
@@ -1400,6 +2025,7 @@ pub mod compat {
         }
     }
 
+    /// Parses an incoming envelope as a response with payload of type `T`.
     pub fn into_response<T>(envelope: IncomingEnvelope) -> Result<IncomingResponse<T>, Error>
     where
         T: serde::de::DeserializeOwned,
@@ -1413,6 +2039,7 @@ pub mod compat {
 
     ////////////////////////////////////////////////////////////////////////////////
 
+    /// Properties of an outgoing envelope.
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "lowercase")]
     #[serde(tag = "type")]
@@ -1422,6 +2049,7 @@ pub mod compat {
         Response(OutgoingResponseProperties),
     }
 
+    /// Outgoing enveloped message.
     #[derive(Debug, Serialize)]
     pub struct OutgoingEnvelope {
         payload: String,
@@ -1431,6 +2059,13 @@ pub mod compat {
     }
 
     impl OutgoingEnvelope {
+        /// Builds an [OutgoingEnvelope](struct.OutgoingEnvelope.html).
+        ///
+        /// # Arguments
+        ///
+        /// * `payload` – payload serialized to string,
+        /// * `properties` – enveloped properties.
+        /// * `destination` – [Destination](../../enum.Destination.html) of the message.
         pub fn new(
             payload: &str,
             properties: OutgoingEnvelopeProperties,
@@ -1447,11 +2082,30 @@ pub mod compat {
     ////////////////////////////////////////////////////////////////////////////////
 
     pub trait IntoEnvelope {
+        /// Wraps an outgoing message into envelope format.
         fn into_envelope(self) -> Result<OutgoingEnvelope, Error>;
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// An incoming MQTT notification.
+///
+/// Use it to process incoming messages.
+/// See [AgentBuilder::start](struct.AgentBuilder.html#method.start) for details.
 pub use rumqtt::client::Notification;
+
+/// Quality of service that defines delivery guarantee level.
+///
+/// MQTT protocol defines three quality of service levels:
+///
+/// * 0 – at least once; no delivery guarantee.
+/// * 1 – at most once; guaranteed to deliver but duplicates may arrive.
+/// * 2 – exactly once; guaranteed to deliver only once.
+///
+/// The more the level – the more the performance overhead.
+///
+/// svc-agent sets QoS = 0 for outgoing events and responses and QoS = 1 for outgoing requests.
+/// This means that only requests are guaranteed to be delivered to the broker but duplicates
+/// are possible so maintaining request idempotency is up to agents.
 pub use rumqtt::QoS;
