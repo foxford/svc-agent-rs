@@ -224,20 +224,24 @@ impl Address {
 
 #[derive(Clone)]
 pub struct Agent {
-    api: Address,
+    address: Address,
     tx: rumqtt::MqttClient,
 }
 
 impl Agent {
     fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
         Self {
-            api: Address::new(id, api_version),
+            address: Address::new(id, api_version),
             tx,
         }
     }
 
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
     pub fn id(&self) -> &AgentId {
-        &self.api.id()
+        &self.address.id()
     }
 
     /// Publish a message.
@@ -271,7 +275,7 @@ impl Agent {
     /// agent.publish(Box::new(message))?;
     /// ```
     pub fn publish(&mut self, message: Box<dyn IntoPublishableDump>) -> Result<(), Error> {
-        let dump = message.into_dump(&self.api)?;
+        let dump = message.into_dump(&self.address)?;
         self.publish_dump(dump)
     }
 
@@ -333,7 +337,7 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(self.id(), self.api.version())?;
+        let mut topic = subscription.subscription_topic(self.id(), self.address.version())?;
         if let Some(ref group) = maybe_group {
             topic = format!("$share/{group}/{topic}", group = group, topic = topic);
         };
@@ -341,6 +345,7 @@ impl Agent {
         self.tx
             .subscribe(topic, qos)
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
+
         Ok(())
     }
 }
