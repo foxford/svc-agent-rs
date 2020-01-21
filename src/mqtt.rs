@@ -199,19 +199,17 @@ impl AgentBuilder {
     }
 }
 
-#[derive(Clone)]
-pub struct Agent {
+#[derive(Clone, Debug)]
+pub struct Address {
     id: AgentId,
-    api_version: String,
-    tx: rumqtt::MqttClient,
+    version: String,
 }
 
-impl Agent {
-    fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
+impl Address {
+    pub fn new(id: AgentId, version: &str) -> Self {
         Self {
             id,
-            api_version: api_version.to_owned(),
-            tx,
+            version: version.to_owned(),
         }
     }
 
@@ -219,7 +217,35 @@ impl Agent {
         &self.id
     }
 
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+#[derive(Clone)]
+pub struct Agent {
+    api: Address,
+    tx: rumqtt::MqttClient,
+}
+
+impl Agent {
+    fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
+        Self {
+            api: Address::new(id, api_version),
+            tx,
+        }
+    }
+
+    pub fn id(&self) -> &AgentId {
+        &self.api.id()
+    }
+
     /// Publish a message.
+    ///
+    /// This method is a shorthand to dump and publish the message with a single call.
+    /// If you want to print out the dump before or after publishing or assert it in tests
+    /// consider using [IntoPublishableDump::into_dump](trait.IntoPublishableDump.html#method.into_dump)
+    /// and [publish_dump](#method.publish_dump).
     ///
     /// # Arguments
     ///
@@ -244,13 +270,40 @@ impl Agent {
     ///
     /// agent.publish(Box::new(message))?;
     /// ```
-    pub fn publish(&mut self, message: Box<dyn Publishable>) -> Result<(), Error> {
-        let topic = self.id.destination_topic(&message, &self.api_version)?;
-        let qos = message.qos();
-        let bytes = message.into_bytes()?;
+    pub fn publish(&mut self, message: Box<dyn IntoPublishableDump>) -> Result<(), Error> {
+        let dump = message.into_dump(&self.api)?;
+        self.publish_dump(dump)
+    }
 
+    /// Publish a dumped message.
+    ///
+    /// # Arguments
+    ///
+    /// * `dump` – message dump.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = OutgoingRequestProperties::new(
+    ///     "system.ping",
+    ///     Subscription::unicast_responses_from(to).subscription_topic(agent.id(), "v1")?,
+    ///     "random-string-123",
+    ///     ShortTermTimingProperties::new(Utc::now()),
+    /// );
+    ///
+    /// let message = OutgoingMessage::new(
+    ///     json!({ "ping": "hello" }),
+    ///     props,
+    ///     Destination::Unicast(agent.id().clone(), "v1"),
+    /// );
+    ///
+    /// let dump = Box::new(message).into_dump();
+    /// agent.publish_dump(dump.clone())?;
+    /// println!("Message published: {}", dump);
+    /// ```
+    pub fn publish_dump(&mut self, dump: PublishableDump) -> Result<(), Error> {
         self.tx
-            .publish(topic, qos, false, bytes)
+            .publish(dump.topic, dump.qos, false, dump.payload)
             .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
     }
 
@@ -280,7 +333,7 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(&self.id, &self.api_version)?;
+        let mut topic = subscription.subscription_topic(self.id(), self.api.version())?;
         if let Some(ref group) = maybe_group {
             topic = format!("$share/{group}/{topic}", group = group, topic = topic);
         };
@@ -598,10 +651,10 @@ impl LongTermTimingProperties {
 /// let start_timestamp = Utc::now();
 /// let authz_time = authorize(&request)?;
 /// let response_payload = process_request(&request)?;
-/// 
+///
 /// let mut short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
 /// short_term_timing.set_authorization_time(authz_time);
-/// 
+///
 /// request.to_response(response_payload, ResponeStatus::OK, short_term_timing, "v1")
 /// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1319,7 +1372,7 @@ impl OutgoingResponseProperties {
     /// # Arguments
     ///
     /// * `status` – HTTP-compatible status code.
-    /// * `correlation_data` – a correlation string between request and response. 
+    /// * `correlation_data` – a correlation string between request and response.
     /// It has meaning to the sender of the request message and receiver of the response message.
     /// * `long_term_timing` – outgoing response's long term timing properties.
     /// * `short_term_timing` – outgoing response's short term timing properties.
@@ -1370,7 +1423,6 @@ pub type ResponseStatus = http::StatusCode;
 pub struct OutgoingMessage<T, P>
 where
     T: serde::Serialize,
-    P: OutgoingProperties,
 {
     payload: T,
     properties: P,
@@ -1380,7 +1432,6 @@ where
 impl<T, P> OutgoingMessage<T, P>
 where
     T: serde::Serialize,
-    P: OutgoingProperties,
 {
     fn new(payload: T, properties: P, destination: Destination) -> Self {
         Self {
@@ -1592,187 +1643,147 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Something that can be published.
 pub trait Publishable {
-    /// Returns `"request"`, `"response"`, or `"event"`.
-    fn message_type(&self) -> &'static str;
-    /// Where to publish.
-    fn destination(&self) -> &Destination;
-    /// Quality of service.
-    fn qos(&self) -> QoS;
-    /// Topic to send the response to in case of `"request"` message type.
-    fn response_topic(&self) -> Option<&str>;
-    /// Payload as binary.
-    fn into_bytes(self: Box<Self>) -> Result<String, Error>;
-}
-
-impl<T, P> Publishable for OutgoingMessage<T, P>
-where
-    T: serde::Serialize,
-    P: OutgoingProperties,
-    OutgoingMessage<T, P>: compat::IntoEnvelope,
-{
-    fn message_type(&self) -> &'static str {
-        self.properties.message_type()
-    }
-
-    fn destination(&self) -> &Destination {
-        &self.destination
-    }
-
-    fn qos(&self) -> QoS {
-        self.properties.qos()
-    }
-
-    fn response_topic(&self) -> Option<&str> {
-        self.properties.response_topic()
-    }
-
-    fn into_bytes(self: Box<Self>) -> Result<String, Error> {
-        use compat::IntoEnvelope;
-
-        let envelope = self.into_envelope()?;
-
-        Ok(serde_json::to_string(&envelope)
-            .map_err(|e| Error::new(&format!("error serializing an envelope to bytes, {}", &e)))?)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-pub trait DestinationTopic {
     /// Returns a destination topic as string.
     ///
     /// # Arguments
     ///
-    /// * `message` – an outgoing message for which the destination topic is being returned.
-    /// * `me_version` – API version of the current agent.
+    /// * `publisher` – publisher agent.
     ///
     /// # Example
     ///
     /// ```
-    /// let topic = agent_id.destination_topic(&boxed_message, "v1")?;
+    /// let topic = message.destination_topic(&agent_id, "v1")?;
     /// ```
-    fn destination_topic(
-        &self,
-        message: &Box<dyn Publishable>,
-        me_version: &str,
-    ) -> Result<String, Error>;
+    fn destination_topic(&self, publisher: &Address) -> Result<String, Error>;
+
+    /// Returns QoS for publishing.
+    fn qos(&self) -> QoS;
 }
 
-impl DestinationTopic for AgentId {
-    fn destination_topic(
-        &self,
-        message: &Box<dyn Publishable>,
-        me_version: &str,
-    ) -> Result<String, Error> {
-        let dest = message.destination();
-
-        match message.message_type() {
-            "event" => match dest {
-                Destination::Broadcast(ref uri) => Ok(format!(
-                    "apps/{app}/api/{version}/{uri}",
-                    app = self.as_account_id(),
-                    version = me_version,
-                    uri = uri,
-                )),
-                _ => Err(Error::new(&format!(
-                    "destination = '{:?}' is incompatible with event message type",
-                    dest,
-                ))),
-            },
-            "request" => match dest {
-                Destination::Unicast(ref agent_id, ref version) => Ok(format!(
-                    "agents/{agent_id}/api/{version}/in/{app}",
-                    agent_id = agent_id,
-                    version = version,
-                    app = self.as_account_id(),
-                )),
-                Destination::Multicast(ref account_id) => Ok(format!(
-                    "agents/{agent_id}/api/{version}/out/{app}",
-                    agent_id = self,
-                    version = me_version,
-                    app = account_id,
-                )),
-                _ => Err(Error::new(&format!(
-                    "destination = '{:?}' is incompatible with request message type",
-                    dest,
-                ))),
-            },
-            "response" => match message.response_topic() {
-                Some(val) => Ok(val.to_string()),
-                None => match dest {
-                    Destination::Unicast(ref agent_id, ref version) => Ok(format!(
-                        "agents/{agent_id}/api/{version}/in/{app}",
-                        agent_id = agent_id,
-                        version = version,
-                        app = self.as_account_id(),
-                    )),
-                    _ => Err(Error::new(&format!(
-                        "destination = '{:?}' is incompatible with response message type",
-                        dest,
-                    ))),
-                },
-            },
-            message_type => Err(Error::new(&format!(
-                "Unknown message type: '{}'",
-                message_type
+impl<T: serde::Serialize> Publishable for OutgoingEvent<T>
+where
+    OutgoingEvent<T>: compat::IntoEnvelope,
+{
+    fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
+        match self.destination {
+            Destination::Broadcast(ref uri) => Ok(format!(
+                "apps/{app}/api/{version}/{uri}",
+                app = publisher.id().as_account_id(),
+                version = publisher.version(),
+                uri = uri,
+            )),
+            _ => Err(Error::new(&format!(
+                "destination = '{:?}' is incompatible with event message type",
+                self.destination,
             ))),
         }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Properties of an outgoing message.
-pub trait OutgoingProperties {
-    /// Returns `"request"`, `"response"` or `"event"`.
-    fn message_type(&self) -> &'static str;
-    /// Quality of service.
-    fn qos(&self) -> QoS;
-    /// Topic to send the response to in case of `"request"` message type.
-    fn response_topic(&self) -> Option<&str>;
-}
-
-impl OutgoingProperties for OutgoingEventProperties {
-    fn message_type(&self) -> &'static str {
-        "event"
     }
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
     }
-
-    fn response_topic(&self) -> Option<&str> {
-        None
-    }
 }
 
-impl OutgoingProperties for OutgoingRequestProperties {
-    fn message_type(&self) -> &'static str {
-        "request"
+impl<T: serde::Serialize> Publishable for OutgoingRequest<T>
+where
+    OutgoingRequest<T>: compat::IntoEnvelope,
+{
+    fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
+        match self.destination {
+            Destination::Unicast(ref agent_id, ref version) => Ok(format!(
+                "agents/{agent_id}/api/{version}/in/{app}",
+                agent_id = agent_id,
+                version = version,
+                app = publisher.id().as_account_id(),
+            )),
+            Destination::Multicast(ref account_id) => Ok(format!(
+                "agents/{agent_id}/api/{version}/out/{app}",
+                agent_id = publisher.id(),
+                version = publisher.version(),
+                app = account_id,
+            )),
+            _ => Err(Error::new(&format!(
+                "destination = '{:?}' is incompatible with request message type",
+                self.destination,
+            ))),
+        }
     }
 
     fn qos(&self) -> QoS {
         QoS::AtMostOnce
     }
-
-    fn response_topic(&self) -> Option<&str> {
-        None
-    }
 }
 
-impl OutgoingProperties for OutgoingResponseProperties {
-    fn message_type(&self) -> &'static str {
-        "response"
+impl<T: serde::Serialize> Publishable for OutgoingResponse<T>
+where
+    OutgoingResponse<T>: compat::IntoEnvelope,
+{
+    fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
+        match self.properties().response_topic() {
+            Some(response_topic) => Ok(response_topic.to_owned()),
+            None => match self.destination {
+                Destination::Unicast(ref agent_id, ref version) => Ok(format!(
+                    "agents/{agent_id}/api/{version}/in/{app}",
+                    agent_id = agent_id,
+                    version = version,
+                    app = publisher.id().as_account_id(),
+                )),
+                _ => Err(Error::new(&format!(
+                    "destination = '{:?}' is incompatible with response message type",
+                    self.destination,
+                ))),
+            },
+        }
     }
 
     fn qos(&self) -> QoS {
         QoS::AtLeastOnce
     }
+}
 
-    fn response_topic(&self) -> Option<&str> {
-        self.response_topic()
+////////////////////////////////////////////////////////////////////////////////
+
+/// Dumped version of [Publishable](trait.Publishable.html).
+#[derive(Clone, Debug)]
+pub struct PublishableDump {
+    topic: String,
+    qos: QoS,
+    payload: String,
+}
+
+impl PublishableDump {
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    pub fn qos(&self) -> QoS {
+        self.qos
+    }
+
+    pub fn payload(&self) -> &str {
+        &self.payload
+    }
+}
+
+pub trait IntoPublishableDump {
+    /// Serializes the object into dump that can be directly published.
+    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableDump, Error>;
+}
+
+impl<T: Publishable + compat::IntoEnvelope> IntoPublishableDump for T {
+    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableDump, Error> {
+        let topic = self.destination_topic(&publisher)?;
+        let qos = self.qos();
+
+        let payload = serde_json::to_string(&self.into_envelope()?)
+            .map_err(|e| Error::new(&format!("error serializing an envelope, {}", &e)))?;
+
+        Ok(PublishableDump {
+            topic,
+            qos,
+            payload,
+        })
     }
 }
 
