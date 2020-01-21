@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0 (January 21, 2019)
+
+### Changes
+- Overhaul Publishable and related traits ([79c06e5](https://github.com/netology-group/svc-agent-rs/commit/79c06e569e76f44fcfd581b171c84c147c319651), [7d682f0](https://github.com/netology-group/svc-agent-rs/commit/7d682f048c504ac67342fbbe4cbcafe380058419))
+
+### Fixes
+- Skip empty agent_id serialization ([af2f2fe](https://github.com/netology-group/svc-agent-rs/commit/af2f2fe21c528c75f85b73e4a3023b3c7ae4dba1))
+
+
 ## v0.10.0 (December 20, 2019)
 
 ### Features
