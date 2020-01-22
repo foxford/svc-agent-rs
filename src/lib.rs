@@ -632,4 +632,5 @@ pub use svc_authn::{AccountId, Authenticable};
 pub use self::error::Error;
 pub mod error;
 pub mod mqtt;
+pub mod request;
 pub(crate) mod serde;

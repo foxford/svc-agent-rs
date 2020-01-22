@@ -4,19 +4,16 @@ use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, AgentConfig, ConnectionMode, Notification, OutgoingEvent,
-        OutgoingEventProperties, QoS, ShortTermTimingProperties,
+        compat, AgentBuilder, ConnectionMode, Notification, OutgoingEvent, OutgoingEventProperties,
+        QoS, ShortTermTimingProperties,
     },
     AccountId, AgentId, Subscription,
 };
 
+mod helpers;
+
 const API_VERSION: &str = "v1";
 const URI: &str = "rooms/123/events";
-
-fn build_agent_config() -> AgentConfig {
-    serde_json::from_str::<AgentConfig>(r#"{"uri": "0.0.0.0:1883"}"#)
-        .expect("Failed to parse agent config")
-}
 
 fn run_event_service() {
     // Create agent.
@@ -25,7 +22,7 @@ fn run_event_service() {
     let builder = AgentBuilder::new(agent_id, API_VERSION).connection_mode(ConnectionMode::Service);
 
     let (mut agent, _rx) = builder
-        .start(&build_agent_config())
+        .start(&helpers::build_agent_config())
         .expect("Failed to start event service");
 
     // Sending broadcast event.
@@ -49,7 +46,7 @@ fn broadcast_event() {
         AgentBuilder::new(agent_id.clone(), API_VERSION).connection_mode(ConnectionMode::Default);
 
     let (mut agent, rx) = builder
-        .start(&build_agent_config())
+        .start(&helpers::build_agent_config())
         .expect("Failed to start event client");
 
     // Subscribe to the broadcast events topic.
