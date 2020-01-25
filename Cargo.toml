@@ -27,3 +27,5 @@ http = "0.1"
 svc-authn = "0.5"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
+futures = "0.3"
+futures-channel = "0.3"

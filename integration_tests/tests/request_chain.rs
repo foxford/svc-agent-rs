@@ -13,12 +13,14 @@ use serde_derive::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, AgentConfig, ConnectionMode, Notification, OutgoingRequest,
+        compat, AgentBuilder, ConnectionMode, Notification, OutgoingRequest,
         OutgoingRequestProperties, OutgoingResponse, OutgoingResponseProperties, QoS,
         ResponseStatus, ShortTermTimingProperties, SubscriptionTopic,
     },
     AccountId, AgentId, SharedGroup, Subscription,
 };
+
+mod helpers;
 
 #[derive(Deserialize)]
 struct Timings {
@@ -29,11 +31,6 @@ struct Timings {
 const A_API_VERSION: &str = "v1";
 const B_API_VERSION: &str = "v2";
 const CORRELATION_DATA_LENGTH: usize = 16;
-
-fn build_agent_config() -> AgentConfig {
-    serde_json::from_str::<AgentConfig>(r#"{"uri": "0.0.0.0:1883"}"#)
-        .expect("Failed to parse agent config")
-}
 
 fn generate_correlation_data() -> String {
     thread_rng()
@@ -49,7 +46,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
 
     let (mut agent, rx) = AgentBuilder::new(agent_id.clone(), A_API_VERSION)
         .connection_mode(ConnectionMode::Service)
-        .start(&build_agent_config())
+        .start(&helpers::build_agent_config())
         .expect("Failed to start service A");
 
     // Subscribe to the multicast requests topic (from clients).
@@ -180,7 +177,7 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
 
     let (mut agent, rx) = AgentBuilder::new(agent_id.clone(), B_API_VERSION)
         .connection_mode(ConnectionMode::Service)
-        .start(&build_agent_config())
+        .start(&helpers::build_agent_config())
         .expect("Failed to start service B");
 
     // Subscribe to the multicast requests topic.
@@ -253,7 +250,7 @@ fn request_chain() {
         AgentBuilder::new(agent_id.clone(), A_API_VERSION).connection_mode(ConnectionMode::Service);
 
     let (mut agent, rx) = builder
-        .start(&build_agent_config())
+        .start(&helpers::build_agent_config())
         .expect("Failed to start ping client");
 
     // Subscribe to the unicast responses topic.
@@ -316,7 +313,7 @@ fn request_chain() {
                     // Assert tracking.
                     let tracking = serde_json::to_value(response.properties().tracking())
                         .expect("Failed to parse timings");
-                    
+
                     let session_tracking_label = tracking
                         .get("session_tracking_label")
                         .expect("Missing session_tracking_label")
