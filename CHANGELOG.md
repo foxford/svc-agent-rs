@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.11.0 (January 21, 2019)
+## v0.11.1 (February 6, 2020)
+
+### Features
+- Add request dispatcher ([c6d7191](https://github.com/netology-group/svc-agent-rs/commit/c6d71916430073268fa25e843d9ef74e482e3b93))
+- Make all incoming properties serializable ([3d033d8](https://github.com/netology-group/svc-agent-rs/commit/3d033d8e2ddfbd17e4759708cb8be5a45b208f05))
+- Allow creating a subscription to an arbitrary topic  ([90de181](https://github.com/netology-group/svc-agent-rs/commit/90de18160daac56ebff2d6033ea37d8bfc4d4f8b))
+
+
+
+## v0.11.0 (January 21, 2020)
 
 ### Changes
 - Overhaul Publishable and related traits ([79c06e5](https://github.com/netology-group/svc-agent-rs/commit/79c06e569e76f44fcfd581b171c84c147c319651), [7d682f0](https://github.com/netology-group/svc-agent-rs/commit/7d682f048c504ac67342fbbe4cbcafe380058419))
