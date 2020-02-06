@@ -1815,6 +1815,15 @@ pub trait SubscriptionTopic {
         A: Addressable;
 }
 
+impl SubscriptionTopic for &'static str {
+    fn subscription_topic<A>(&self, _me: &A, _me_version: &str) -> Result<String, Error>
+    where
+        A: Addressable,
+    {
+        Ok(self.to_string())
+    }
+}
+
 impl<'a> SubscriptionTopic for EventSubscription<'a> {
     fn subscription_topic<A>(&self, _me: &A, _me_version: &str) -> Result<String, Error>
     where
