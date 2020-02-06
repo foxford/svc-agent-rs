@@ -1090,7 +1090,7 @@ impl Addressable for IncomingRequestProperties {
 }
 
 /// Properties of an incoming response.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IncomingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
