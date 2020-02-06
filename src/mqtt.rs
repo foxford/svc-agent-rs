@@ -1090,7 +1090,7 @@ impl Addressable for IncomingRequestProperties {
 }
 
 /// Properties of an incoming response.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IncomingResponseProperties {
     #[serde(with = "crate::serde::HttpStatusCodeRef")]
     status: ResponseStatus,
@@ -1143,7 +1143,7 @@ impl Addressable for IncomingResponseProperties {
 #[derive(Debug)]
 pub struct IncomingMessage<T, P>
 where
-    P: Addressable,
+    P: Addressable + serde::Serialize,
 {
     payload: T,
     properties: P,
@@ -1151,7 +1151,7 @@ where
 
 impl<T, P> IncomingMessage<T, P>
 where
-    P: Addressable,
+    P: Addressable + serde::Serialize,
 {
     pub fn new(payload: T, properties: P) -> Self {
         Self {
