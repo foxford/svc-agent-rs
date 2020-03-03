@@ -27,6 +27,7 @@ use crate::{
 /// * `reconnect_interval` – reconnection attempts interval. Default: 10 sec.
 /// * `outgoing_message_queue_size` – maximum messages in-flight. Default: 100.
 /// * `incomming_message_queue_size` – notification channel capacity. Default: 10.
+/// * `max_message_size` – maximum message size in bytes. Default: 256 * 1024.
 /// * `password` – MQTT broker password.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentConfig {
@@ -37,6 +38,7 @@ pub struct AgentConfig {
     outgoing_message_queue_size: Option<usize>,
     incomming_message_queue_size: Option<usize>,
     password: Option<String>,
+    max_message_size: Option<usize>,
 }
 
 impl AgentConfig {
@@ -189,6 +191,10 @@ impl AgentBuilder {
         };
         opts = match config.outgoing_message_queue_size {
             Some(value) => opts.set_inflight(value),
+            _ => opts,
+        };
+        opts = match config.max_message_size {
+            Some(value) => opts.set_max_packet_size(value),
             _ => opts,
         };
         opts = opts.set_security_opts(rumqtt::SecurityOptions::UsernamePassword(
