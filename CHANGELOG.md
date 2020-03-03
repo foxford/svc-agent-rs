@@ -1,12 +1,18 @@
 # Changelog
 
+## v0.11.2 (March 3, 2020)
+
+### Features
+- Add `max_message_size` config option ([5a820c4](https://github.com/netology-group/svc-agent-rs/commit/5a820c4596a544209a2d0e597c5b96565020371d))
+- Add `OutgoingRequestProperties::set_local_timestamp` ([721ccf54](https://github.com/netology-group/svc-agent-rs/commit/721ccf54004301da0a4302bc900773fdc8230e02))
+
+
 ## v0.11.1 (February 6, 2020)
 
 ### Features
 - Add request dispatcher ([c6d7191](https://github.com/netology-group/svc-agent-rs/commit/c6d71916430073268fa25e843d9ef74e482e3b93))
 - Make all incoming properties serializable ([3d033d8](https://github.com/netology-group/svc-agent-rs/commit/3d033d8e2ddfbd17e4759708cb8be5a45b208f05))
 - Allow creating a subscription to an arbitrary topic  ([90de181](https://github.com/netology-group/svc-agent-rs/commit/90de18160daac56ebff2d6033ea37d8bfc4d4f8b))
-
 
 
 ## v0.11.0 (January 21, 2020)

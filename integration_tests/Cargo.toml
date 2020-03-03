@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent-integration-tests"
-version = "0.10.0"
+version = "0.11.2"
 authors = ["Timofey Martynov"]
 edition = "2018"
 
