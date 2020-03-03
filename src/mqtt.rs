@@ -1292,6 +1292,12 @@ pub struct OutgoingRequestProperties {
     short_term_timing: ShortTermTimingProperties,
     #[serde(flatten)]
     tracking: Option<TrackingProperties>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "ts_milliseconds_string_option"
+    )]
+    local_timestamp: Option<DateTime<Utc>>,
 }
 
 impl OutgoingRequestProperties {
@@ -1332,6 +1338,7 @@ impl OutgoingRequestProperties {
             long_term_timing: None,
             short_term_timing,
             tracking: None,
+            local_timestamp: None,
         }
     }
 
@@ -1347,6 +1354,11 @@ impl OutgoingRequestProperties {
 
     pub fn set_tracking(&mut self, tracking: TrackingProperties) -> &mut Self {
         self.tracking = Some(tracking);
+        self
+    }
+
+    pub fn set_local_timestamp(&mut self, local_timestamp: DateTime<Utc>) -> &mut Self {
+        self.local_timestamp = Some(local_timestamp);
         self
     }
 
