@@ -10,7 +10,7 @@
 //!
 //! # Key concepts
 //!
-//! svc-agent is about exchaning messages between agents using pub-sub model.
+//! svc-agent is about exchanging messages between agents using pub-sub model.
 //!
 //! An agent is a service or end user who can publish and [subscribe](struct.Subscription.html)
 //! to messages. Each agent has a unique [AgentId](struct.Agent.Id).
@@ -38,9 +38,9 @@ use std::str::FromStr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Something that can be adressed as agent.
+/// Something that can be addressed as agent.
 pub trait Addressable: Authenticable {
-    /// Returns the [AgentId](struct.AgentId.html) reference of the adressable object.
+    /// Returns the [AgentId](struct.AgentId.html) reference of the addressable object.
     fn as_agent_id(&self) -> &AgentId;
 }
 
@@ -48,7 +48,7 @@ pub trait Addressable: Authenticable {
 
 /// Agent identifier.
 ///
-/// It consists of a strig `label` and [AccountId](struct.AccountId.html) and must be unique.
+/// It consists of a string `label` and [AccountId](struct.AccountId.html) and must be unique.
 ///
 /// Multiple agents may use the same [AccountId](struct.AccountId.html), e.g. multiple instances
 /// of the same service or multiple devices or browser tabs of an end user, but the `label`
@@ -230,7 +230,7 @@ impl FromStr for SharedGroup {
 ///
 /// This is an abstraction over MQTT topic pattern to determine outgoing message's publish topic.
 ///
-/// Understaging message routing is the key thing to use svc-agent.
+/// Understanding message routing is the key thing to use svc-agent.
 /// Make sure that you understand the patterns below and their counterparts described in
 /// [Source](enum.Source.html).
 ///
@@ -271,7 +271,7 @@ pub enum Destination {
     /// |----------|-------------|----------------------------------------------------|
     /// | request  | one-to_app  | agents/`MY_AGENT_ID`/api/`MY_VER`/out/`ACCOUNT_ID` |
     Multicast(AccountId),
-    /// Publish a message to the specic instance with known `AGENT_ID`.
+    /// Publish a message to the specific instance with known `AGENT_ID`.
     ///
     /// Typically being used for responding to requests.
     /// Also used for making a request to a specific instance of a stateful service.
@@ -299,7 +299,7 @@ pub enum Destination {
 /// [ResponseSubscription](struct.ResponseSubscription.html) or
 /// [EventSubscription](struct.EventSubscription.html) directly when you need something special.
 ///
-/// Understaging message routing is the key thing to use svc-agent.
+/// Understanding message routing is the key thing to use svc-agent.
 /// Make sure that you understand the patterns below and their counterparts described in
 /// [Destination](enum.Destination.html).
 ///
@@ -380,7 +380,7 @@ impl Subscription {
     ///
     /// # Arguments
     ///
-    /// * `from` – anything [Adressable](trait.Adressable) to receive events from.
+    /// * `from` – anything [Addressable](trait.Addressable) to receive events from.
     /// For example service [AgentId](struct.AgentId).
     /// * `version` – API version string of the `from` agent. Example: `v1`.
     /// * `uri` – resource path divided by `/` to receive events on. Example: `room/ROOM_ID/events`.
@@ -424,11 +424,11 @@ impl Subscription {
     /// [multicast requests](struct.Source#variant.Multicast) from a specific agent.
     ///
     /// This is the same as [multicast_requests](struct.Subscription.html#method.multicast_requests)
-    /// but subscribes only from requests from a specfic agent.
+    /// but subscribes only from requests from a specific agent.
     ///
     /// # Arguments
     ///
-    /// * `from` – anything [Adressable](trait.Adressable) to receive requests from.
+    /// * `from` – anything [Addressable](trait.Addressable) to receive requests from.
     /// For example service [AgentId](struct.AgentId).
     /// * `version` – API version string of the `from` agent. Example: `v1`.
     ///
@@ -466,11 +466,11 @@ impl Subscription {
     /// [unicast requests](struct.Source#variant.Unicast) from a specific agent.
     ///
     /// This is the same as [unicast_requests](struct.Subscription.html#method.unicast_requests)
-    /// but subscribes only from requests from a specfic agent.
+    /// but subscribes only from requests from a specific agent.
     ///
     /// # Arguments
     ///
-    /// * `from` – anything [Adressable](trait.Adressable) to receive requests from.
+    /// * `from` – anything [Addressable](trait.Addressable) to receive requests from.
     /// For example service [AgentId](struct.AgentId).
     ///
     /// # Example
@@ -504,7 +504,7 @@ impl Subscription {
     /// [unicast requests](struct.Source#variant.Unicast) from a specific agent.
     ///
     /// This is the same as [unicast_responses](struct.Subscription.html#method.unicast_responses)
-    /// but subscribes only from requests from a specfic agent.
+    /// but subscribes only from requests from a specific agent.
     ///
     /// # Example
     ///

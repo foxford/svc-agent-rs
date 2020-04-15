@@ -35,7 +35,7 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
         )
         .expect("Error subscribing to multicast requests");
 
-    // Notifying that the service is intiialized.
+    // Notifying that the service is initialized.
     init_tx.send(()).expect("Failed to notify about init");
 
     // Message handling loop.
