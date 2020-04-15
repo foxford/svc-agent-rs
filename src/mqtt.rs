@@ -863,6 +863,8 @@ pub struct IncomingEventProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
     tracking: TrackingProperties,
 }
 
@@ -873,6 +875,14 @@ impl IncomingEventProperties {
 
     pub fn label(&self) -> Option<&str> {
         self.label.as_ref().map(|l| &**l)
+    }
+
+    pub fn long_term_timing(&self) -> &LongTermTimingProperties {
+        &self.long_term_timing
+    }
+
+    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+        &self.short_term_timing
     }
 
     pub fn tracking(&self) -> &TrackingProperties {
@@ -941,6 +951,8 @@ pub struct IncomingRequestProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
     tracking: TrackingProperties,
 }
 
@@ -959,6 +971,14 @@ impl IncomingRequestProperties {
 
     pub fn broker_agent_id(&self) -> &AgentId {
         &self.broker_agent_id
+    }
+
+    pub fn long_term_timing(&self) -> &LongTermTimingProperties {
+        &self.long_term_timing
+    }
+
+    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+        &self.short_term_timing
     }
 
     pub fn tracking(&self) -> &TrackingProperties {
@@ -1106,6 +1126,8 @@ pub struct IncomingResponseProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
+    short_term_timing: ShortTermTimingProperties,
+    #[serde(flatten)]
     tracking: TrackingProperties,
 }
 
@@ -1120,6 +1142,10 @@ impl IncomingResponseProperties {
 
     pub fn long_term_timing(&self) -> &LongTermTimingProperties {
         &self.long_term_timing
+    }
+
+    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+        &self.short_term_timing
     }
 
     pub fn tracking(&self) -> &TrackingProperties {
