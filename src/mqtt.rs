@@ -269,7 +269,7 @@ impl Agent {
     ///     "system.ping",
     ///     Subscription::unicast_responses_from(to).subscription_topic(agent.id(), "v1")?,
     ///     "random-string-123",
-    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     OutgoingShortTermTimingProperties::new(Utc::now()),
     /// );
     ///
     /// let message = OutgoingMessage::new(
@@ -298,7 +298,7 @@ impl Agent {
     ///     "system.ping",
     ///     Subscription::unicast_responses_from(to).subscription_topic(agent.id(), "v1")?,
     ///     "random-string-123",
-    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     OutgoingShortTermTimingProperties::new(Utc::now()),
     /// );
     ///
     /// let message = OutgoingMessage::new(
@@ -521,13 +521,13 @@ impl Addressable for ConnectionProperties {
 
 /// Timing properties that persist through a message chain.
 ///
-/// See [ShortTermTimingProperties](ShortTermTimingProperties.html) for more explanation
+/// See [OutgoingShortTermTimingProperties](OutgoingShortTermTimingProperties.html) for more explanation
 /// on timings.
 ///
 /// There are two kinds of properties: regular an cumulative.
 /// Regular properties just get proxied without change to the next message in the chain.
 /// Cumulative properties sum corresponding values from
-/// [ShortTermTimingProperties](ShortTermTimingProperties.html).
+/// [OutgoingShortTermTimingProperties](OutgoingShortTermTimingProperties.html).
 ///
 /// If you use methods like [to_response](type.IncomingRequest.html#method.to_response),
 /// [to_request](struct.IncomingRequestProperties.html#method.to_request),
@@ -569,7 +569,7 @@ pub struct LongTermTimingProperties {
 
 impl LongTermTimingProperties {
     /// Updates cumulative values with the given
-    /// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) values.
+    /// [OutgoingShortTermTimingProperties](struct.OutgoingShortTermTimingProperties.html) values.
     ///
     /// Prefer using [to_response](type.IncomingRequest.html#method.to_response) and similar
     /// methods for building responses. If you by any chance can't use them but still want
@@ -579,13 +579,13 @@ impl LongTermTimingProperties {
     /// # Arguments
     ///
     /// * `short_timing` – a reference to
-    /// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) object with
+    /// [OutgoingShortTermTimingProperties](struct.OutgoingShortTermTimingProperties.html) object with
     /// values to increase long term timings with.
     ///
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     ///
     /// let long_term_timing = response
     ///     .properties()
@@ -608,7 +608,10 @@ impl LongTermTimingProperties {
     ///     "v1"
     /// );
     /// ```
-    pub fn update_cumulative_timings(self, short_timing: &ShortTermTimingProperties) -> Self {
+    pub fn update_cumulative_timings(
+        self,
+        short_timing: &OutgoingShortTermTimingProperties,
+    ) -> Self {
         let cumulative_authorization_time = short_timing
             .authorization_time
             .map(|increment| {
@@ -663,13 +666,13 @@ impl LongTermTimingProperties {
 /// let authz_time = authorize(&request)?;
 /// let response_payload = process_request(&request)?;
 ///
-/// let mut short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+/// let mut short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
 /// short_term_timing.set_authorization_time(authz_time);
 ///
 /// request.to_response(response_payload, ResponeStatus::OK, short_term_timing, "v1")
 /// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ShortTermTimingProperties {
+pub struct OutgoingShortTermTimingProperties {
     #[serde(with = "ts_milliseconds_string")]
     timestamp: DateTime<Utc>,
     #[serde(
@@ -686,8 +689,8 @@ pub struct ShortTermTimingProperties {
     authorization_time: Option<Duration>,
 }
 
-impl ShortTermTimingProperties {
-    /// Builds [ShortTermTimingProperties](ShortTermTimingProperties.html) and sets
+impl OutgoingShortTermTimingProperties {
+    /// Builds [OutgoingShortTermTimingProperties](OutgoingShortTermTimingProperties.html) and sets
     /// processing time in one call.
     ///
     /// # Arguments
@@ -697,7 +700,7 @@ impl ShortTermTimingProperties {
     /// # Example
     ///
     /// ```
-    /// let mut short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let mut short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     /// ```
     pub fn until_now(start_timestamp: DateTime<Utc>) -> Self {
         let now = Utc::now();
@@ -706,7 +709,7 @@ impl ShortTermTimingProperties {
         timing
     }
 
-    /// Builds [ShortTermTimingProperties](ShortTermTimingProperties.html)
+    /// Builds [OutgoingShortTermTimingProperties](OutgoingShortTermTimingProperties.html)
     /// by explicit timestamp.
     ///
     /// # Arguments
@@ -716,7 +719,7 @@ impl ShortTermTimingProperties {
     /// # Example
     ///
     /// ```
-    /// let mut short_term_timing = ShortTermTimingProperties::until_now(Utc::now());
+    /// let mut short_term_timing = OutgoingShortTermTimingProperties::until_now(Utc::now());
     /// ```
     pub fn new(timestamp: DateTime<Utc>) -> Self {
         Self {
@@ -735,6 +738,28 @@ impl ShortTermTimingProperties {
         self.authorization_time = Some(authorization_time);
         self
     }
+}
+
+pub type ShortTermTimingProperties = OutgoingShortTermTimingProperties;
+
+/// This is similar to [OutgoingShortTermTimingProperties](OutgoingShortTermTimingProperties.html)
+/// but for incoming messages. The only difference is more loose optionality restrictions.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IncomingShortTermTimingProperties {
+    #[serde(with = "ts_milliseconds_string_option")]
+    timestamp: Option<DateTime<Utc>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
+    processing_time: Option<Duration>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "duration_milliseconds_string_option"
+    )]
+    authorization_time: Option<Duration>,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -836,7 +861,7 @@ impl fmt::Display for TrackingId {
 /// Message tracking properties.
 ///
 /// Apart from [LongTermTimingProperties](struct.LongTermTimingProperties.html) and
-/// [ShortTermTimingProperties](struct.ShortTermTimingProperties.html) there are also
+/// [OutgoingShortTermTimingProperties](struct.OutgoingShortTermTimingProperties.html) there are also
 /// tracking properties. They get assigned by the broker but since the decision on whether to
 /// continue the chain by the next message either start a new chain is up to the agent,
 /// tracking properties needs to be proxied in the former case.
@@ -863,7 +888,7 @@ pub struct IncomingEventProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
 }
@@ -881,7 +906,7 @@ impl IncomingEventProperties {
         &self.long_term_timing
     }
 
-    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+    pub fn short_term_timing(&self) -> &IncomingShortTermTimingProperties {
         &self.short_term_timing
     }
 
@@ -902,13 +927,13 @@ impl IncomingEventProperties {
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     /// let out_props = in_props.to_event("agent.enter", short_term_timing);
     /// ```
     pub fn to_event(
         &self,
         label: &'static str,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
     ) -> OutgoingEventProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
@@ -919,7 +944,7 @@ impl IncomingEventProperties {
 
     fn update_long_term_timing(
         &self,
-        short_term_timing: &ShortTermTimingProperties,
+        short_term_timing: &OutgoingShortTermTimingProperties,
     ) -> LongTermTimingProperties {
         self.long_term_timing
             .clone()
@@ -951,7 +976,7 @@ pub struct IncomingRequestProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
 }
@@ -977,7 +1002,7 @@ impl IncomingRequestProperties {
         &self.long_term_timing
     }
 
-    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+    pub fn short_term_timing(&self) -> &IncomingShortTermTimingProperties {
         &self.short_term_timing
     }
 
@@ -1003,13 +1028,13 @@ impl IncomingRequestProperties {
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     /// let out_props = in_props.to_event("agent.enter", short_term_timing);
     /// ```
     pub fn to_event(
         &self,
         label: &'static str,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
     ) -> OutgoingEventProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
@@ -1036,7 +1061,7 @@ impl IncomingRequestProperties {
     /// let out_props = in_props.to_request(
     ///     "room.enter",
     ///     &Subscription::unicast_responses(),
-    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     /// ```
     pub fn to_request(
@@ -1044,7 +1069,7 @@ impl IncomingRequestProperties {
         method: &str,
         response_topic: &str,
         correlation_data: &str,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
     ) -> OutgoingRequestProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
 
@@ -1073,13 +1098,13 @@ impl IncomingRequestProperties {
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     /// let out_props = in_props.to_response(ResponseStatus::OK, short_term_timing);
     /// ```
     pub fn to_response(
         &self,
         status: ResponseStatus,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
     ) -> OutgoingResponseProperties {
         let mut props = OutgoingResponseProperties::new(
             status,
@@ -1095,7 +1120,7 @@ impl IncomingRequestProperties {
 
     fn update_long_term_timing(
         &self,
-        short_term_timing: &ShortTermTimingProperties,
+        short_term_timing: &OutgoingShortTermTimingProperties,
     ) -> LongTermTimingProperties {
         self.long_term_timing
             .clone()
@@ -1126,7 +1151,7 @@ pub struct IncomingResponseProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
 }
@@ -1144,7 +1169,7 @@ impl IncomingResponseProperties {
         &self.long_term_timing
     }
 
-    pub fn short_term_timing(&self) -> &ShortTermTimingProperties {
+    pub fn short_term_timing(&self) -> &IncomingShortTermTimingProperties {
         &self.short_term_timing
     }
 
@@ -1219,14 +1244,14 @@ impl<T> IncomingRequest<T> {
     /// let response = request.to_response(
     ///     json!({ "foo": "bar" }),
     ///     ResponseStatus::OK,
-    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     /// ```
     pub fn to_response<R>(
         &self,
         data: R,
         status: ResponseStatus,
-        timing: ShortTermTimingProperties,
+        timing: OutgoingShortTermTimingProperties,
         api_version: &str,
     ) -> OutgoingResponse<R>
     where
@@ -1256,7 +1281,7 @@ pub struct OutgoingEventProperties {
     #[serde(flatten)]
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: OutgoingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: Option<TrackingProperties>,
 }
@@ -1281,10 +1306,10 @@ impl OutgoingEventProperties {
     /// ```
     /// let props = OutgoingEventProperties::new(
     ///     "agent.enter",
-    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     OutgoingShortTermTimingProperties::new(Utc::now()),
     /// );
     /// ```
-    pub fn new(label: &'static str, short_term_timing: ShortTermTimingProperties) -> Self {
+    pub fn new(label: &'static str, short_term_timing: OutgoingShortTermTimingProperties) -> Self {
         Self {
             label,
             long_term_timing: None,
@@ -1315,7 +1340,7 @@ pub struct OutgoingRequestProperties {
     #[serde(flatten)]
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: OutgoingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: Option<TrackingProperties>,
     #[serde(
@@ -1347,14 +1372,14 @@ impl OutgoingRequestProperties {
     /// let props = OutgoingRequestProperties::new(
     ///     "system.vacuum",
     ///     &Subscription::unicast_responses(),
-    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     OutgoingShortTermTimingProperties::new(Utc::now()),
     /// );
     /// ```
     pub fn new(
         method: &str,
         response_topic: &str,
         correlation_data: &str,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
     ) -> Self {
         Self {
             method: method.to_owned(),
@@ -1404,7 +1429,7 @@ pub struct OutgoingResponseProperties {
     #[serde(flatten)]
     long_term_timing: LongTermTimingProperties,
     #[serde(flatten)]
-    short_term_timing: ShortTermTimingProperties,
+    short_term_timing: OutgoingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
 }
@@ -1434,7 +1459,7 @@ impl OutgoingResponseProperties {
     ///     ResponseStatus::OK,
     ///     req_props.correlation_data().clone(),
     ///     req_props.long_term_timing().clone(),
-    ///     ShortTermTimingProperties::new(Utc::now()),
+    ///     OutgoingShortTermTimingProperties::new(Utc::now()),
     ///     req_props.tracking().clone(),
     /// );
     /// ```
@@ -1442,7 +1467,7 @@ impl OutgoingResponseProperties {
         status: ResponseStatus,
         correlation_data: &str,
         long_term_timing: LongTermTimingProperties,
-        short_term_timing: ShortTermTimingProperties,
+        short_term_timing: OutgoingShortTermTimingProperties,
         tracking: TrackingProperties,
     ) -> Self {
         Self {
@@ -1511,7 +1536,7 @@ where
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     ///
     /// let message = OutgoingEvent::broadcast(
     ///     json!({ "foo": "bar" }),
@@ -1546,7 +1571,7 @@ where
     /// let props = request.to_request(
     ///     "room.enter",
     ///     &Subscription::unicast_responses(),
-    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     ///
     /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props);
@@ -1577,7 +1602,7 @@ where
     /// let props = request.to_request(
     ///     "room.enter",
     ///     &Subscription::unicast_responses(),
-    ///     ShortTermTimingProperties::until_now(start_timestamp),
+    ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     ///
     /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
@@ -1616,7 +1641,7 @@ where
     /// # Example
     ///
     /// ```
-    /// let short_term_timing = ShortTermTimingProperties::until_now(start_timestamp);
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
     /// let props = request.properties().to_response(ResponseStatus::OK, short_term_timing)
     /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
     /// let message = OutgoingResponse::unicast(json!({ "foo": "bar" }), props, to, "v1");
