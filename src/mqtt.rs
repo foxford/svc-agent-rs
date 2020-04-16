@@ -21,12 +21,12 @@ use crate::{
 /// # Options
 ///
 /// * `uri` – MQTT broker URI (required).
-/// * `clean_session` – whether to start a clean sessinon or continue the persisted session.
+/// * `clean_session` – whether to start a clean session or continue the persisted session.
 /// Default: `true`.
 /// * `keep_alive_interval` – keep alive time to ping the broker. Default: 30 sec.
 /// * `reconnect_interval` – reconnection attempts interval. Default: 10 sec.
 /// * `outgoing_message_queue_size` – maximum messages in-flight. Default: 100.
-/// * `incomming_message_queue_size` – notification channel capacity. Default: 10.
+/// * `incoming_message_queue_size` – notification channel capacity. Default: 10.
 /// * `max_message_size` – maximum message size in bytes. Default: 256 * 1024.
 /// * `password` – MQTT broker password.
 #[derive(Debug, Clone, Deserialize)]
@@ -36,7 +36,7 @@ pub struct AgentConfig {
     keep_alive_interval: Option<u64>,
     reconnect_interval: Option<u64>,
     outgoing_message_queue_size: Option<usize>,
-    incomming_message_queue_size: Option<usize>,
+    incoming_message_queue_size: Option<usize>,
     password: Option<String>,
     max_message_size: Option<usize>,
 }
@@ -105,7 +105,7 @@ impl AgentBuilder {
         Self { connection, ..self }
     }
 
-    /// Starts an MQTT client and in case of successfull connection returns a tuple containing
+    /// Starts an MQTT client and in case of successful connection returns a tuple containing
     /// an [Agent](struct.Agent.html) instance and a channel receiver which one can
     /// iterate over to get incoming messages.
     ///
@@ -185,7 +185,7 @@ impl AgentBuilder {
             Some(value) => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Always(value)),
             _ => opts,
         };
-        opts = match config.incomming_message_queue_size {
+        opts = match config.incoming_message_queue_size {
             Some(value) => opts.set_notification_channel_capacity(value),
             _ => opts,
         };
@@ -657,7 +657,7 @@ impl LongTermTimingProperties {
 /// result object to [OutgoingMessageProperties](struct.OutgoingMessageProperties.html).
 ///
 /// If you make an authorization call to an external system during the processing you may want to
-/// meausure it during the call and set it to the object to monitor authorization latency as well.
+/// measure it during the call and set it to the object to monitor authorization latency as well.
 ///
 /// # Example
 ///
@@ -669,7 +669,7 @@ impl LongTermTimingProperties {
 /// let mut short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
 /// short_term_timing.set_authorization_time(authz_time);
 ///
-/// request.to_response(response_payload, ResponeStatus::OK, short_term_timing, "v1")
+/// request.to_response(response_payload, ResponseStatus::OK, short_term_timing, "v1")
 /// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OutgoingShortTermTimingProperties {
@@ -1438,7 +1438,7 @@ impl OutgoingResponseProperties {
     /// Builds [OutgoingResponseProperties](struct.OutgoingResponseProperties.html).
     ///
     /// Generally you shouldn't use this function and consider using
-    /// [IncomingRequestProperties::to_response](struct.IncomingRequestProperties.html#method.to_respone)
+    /// [IncomingRequestProperties::to_response](struct.IncomingRequestProperties.html#method.to_response)
     /// because all outgoing responses are related to an incoming request to respond to.
     /// However if you need to customize the response creation you may want to call this constructor
     /// directly.
@@ -2007,7 +2007,7 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
 /// different versions of the protocol. When an MQTT 5 client sends a message to an MQTT 3.1 client
 /// it sends plain payload and properties using MQTT 5 features but latter client receives
 /// it in the envelope format. And vice versa: published an MQTT 3.1 envelope will be received
-/// as a plain MQTT 5 messsage by an MQTT 5 client.
+/// as a plain MQTT 5 message by an MQTT 5 client.
 ///
 /// This module implements the agent's part of this convention.
 ///

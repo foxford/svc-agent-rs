@@ -165,7 +165,7 @@
 ## v0.5.1 (Apr 24, 2019)
 
 ### Features
-- Add `keep_alive_interval`, `reconnect_interval`, `outgoing_message_queue_size`, and `incomming_message_queue_size` configuration options ([3ba5a4d](https://github.com/netology-group/svc-agent-rs/commit/3ba5a4dfafbe7ae2326dfa7fda1b3a1802161c5c))
+- Add `keep_alive_interval`, `reconnect_interval`, `outgoing_message_queue_size`, and `incoming_message_queue_size` configuration options ([3ba5a4d](https://github.com/netology-group/svc-agent-rs/commit/3ba5a4dfafbe7ae2326dfa7fda1b3a1802161c5c))
 
 ### Changes
 - Make `clean_session` configuration option optional ([3ba5a4d](https://github.com/netology-group/svc-agent-rs/commit/3ba5a4dfafbe7ae2326dfa7fda1b3a1802161c5c))
@@ -185,7 +185,7 @@
 ## v0.4.1 (Apr 17, 2019)
 
 ### Features
-- Implement `Dereserialize` for `OutgoingResponseStatus` ([296173b](https://github.com/netology-group/svc-agent-rs/commit/296173b815d4ecdaa1a3e83dc2e89704cd9d65cf))
+- Implement `Deserialize` for `OutgoingResponseStatus` ([296173b](https://github.com/netology-group/svc-agent-rs/commit/296173b815d4ecdaa1a3e83dc2e89704cd9d65cf))
 
 
 

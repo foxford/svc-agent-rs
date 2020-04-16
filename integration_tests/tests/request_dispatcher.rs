@@ -101,7 +101,7 @@ fn request_dispatcher() {
             .expect("Failed to notify about received response");
     });
 
-    // Block to synschonize with the above async part.
+    // Block to synchronize with the above async part.
     resp_rx
         .recv_timeout(Duration::from_secs(5))
         .expect("Failed to await response");

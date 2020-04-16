@@ -73,7 +73,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
     // A->B request corr. data => (agent id, Client->A request corr.data)
     let mut state: HashMap<String, (AgentId, String)> = HashMap::new();
 
-    // Notifying that the service is intiialized.
+    // Notifying that the service is initialized.
     init_tx
         .send(())
         .expect("Failed to notify about init in service A");
@@ -188,7 +188,7 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
         .subscribe(&subscription, QoS::AtLeastOnce, Some(&group))
         .expect("Error subscribing to multicast requests in service B");
 
-    // Notifying that the service is intiialized.
+    // Notifying that the service is initialized.
     init_tx
         .send(())
         .expect("Failed to notify about init in service B");
