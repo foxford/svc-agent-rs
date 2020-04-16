@@ -416,7 +416,7 @@ impl Subscription {
     /// ```
     /// let subscription = Subscription::multicast_requests("v1");
     /// ```
-    pub fn multicast_requests<'a>(version: Option<&'a str>) -> RequestSubscription<'a> {
+    pub fn multicast_requests(version: Option<&str>) -> RequestSubscription {
         RequestSubscription::new(Source::Multicast(None, version))
     }
 
