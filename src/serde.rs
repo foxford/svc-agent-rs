@@ -404,7 +404,7 @@ pub(crate) mod session_ids_list {
     use crate::mqtt::SessionId;
 
     pub(crate) fn serialize<S>(
-        session_ids: &Vec<SessionId>,
+        session_ids: &[SessionId],
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
@@ -441,7 +441,7 @@ pub(crate) mod session_ids_list {
         {
             let mut session_ids = vec![];
 
-            for session_id_str in s.split(" ") {
+            for session_id_str in s.split(' ') {
                 match SessionId::from_str(session_id_str) {
                     Ok(session_id) => session_ids.push(session_id),
                     Err(err) => {

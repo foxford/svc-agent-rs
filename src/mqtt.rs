@@ -468,7 +468,7 @@ impl FromStr for Connection {
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         match val.split('/').collect::<Vec<&str>>().as_slice() {
             [version_str, mode_str, agent_id_str] => {
-                let version = version_str.to_string();
+                let version = (*version_str).to_string();
                 let mode = ConnectionMode::from_str(mode_str)?;
                 let agent_id = AgentId::from_str(agent_id_str)?;
                 Ok(Self {
@@ -752,7 +752,7 @@ impl FromStr for SessionId {
     /// Parses a [SessionId](struct.SessionId.html) from a string of two UUIDs
     /// separated by a dot.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let components = s.splitn(2, ".").collect::<Vec<&str>>();
+        let components = s.splitn(2, '.').collect::<Vec<&str>>();
 
         match components[..] {
             [agent_session_label_str, broker_session_label_str] => {
@@ -804,7 +804,7 @@ impl FromStr for TrackingId {
     /// Parses a [TrackingId](struct.TrackingId.html) from a string of three UUIDs
     /// separated by a dot.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let components = s.splitn(2, ".").collect::<Vec<&str>>();
+        let components = s.splitn(2, '.').collect::<Vec<&str>>();
 
         match components[..] {
             [label_str, session_id_str] => {
@@ -1838,7 +1838,7 @@ impl SubscriptionTopic for &'static str {
     where
         A: Addressable,
     {
-        Ok(self.to_string())
+        Ok((*self).to_string())
     }
 }
 
