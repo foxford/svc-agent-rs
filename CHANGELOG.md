@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.3 (April 17, 2020)
+
+### Features
+- Split up incoming & outgoing short term timings ([0acd988](https://github.com/netology-group/svc-agent-rs/commit/0acd9883281f714fd865db322a64e0014f385526))
+
+
 ## v0.11.2 (March 3, 2020)
 
 ### Features
