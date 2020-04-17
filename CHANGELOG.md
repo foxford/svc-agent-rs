@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.4 (April 17, 2020)
+
+### Fixes
+- Skip serializing empty timestamp ([785a657](https://github.com/netology-group/svc-agent-rs/commit/785a657c567896403b0df3cfff072e40e084d1a7))
+
+
 ## v0.11.3 (April 17, 2020)
 
 ### Features
