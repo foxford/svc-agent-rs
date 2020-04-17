@@ -746,7 +746,11 @@ pub type ShortTermTimingProperties = OutgoingShortTermTimingProperties;
 /// but for incoming messages. The only difference is more loose optionality restrictions.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IncomingShortTermTimingProperties {
-    #[serde(with = "ts_milliseconds_string_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "ts_milliseconds_string_option"
+    )]
     timestamp: Option<DateTime<Utc>>,
     #[serde(
         default,
