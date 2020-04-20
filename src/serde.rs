@@ -403,10 +403,7 @@ pub(crate) mod session_ids_list {
 
     use crate::mqtt::SessionId;
 
-    pub(crate) fn serialize<S>(
-        session_ids: &[SessionId],
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+    pub(crate) fn serialize<S>(session_ids: &[SessionId], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: ser::Serializer,
     {
