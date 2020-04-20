@@ -1555,6 +1555,36 @@ where
             Destination::Broadcast(to_uri.to_owned()),
         )
     }
+
+    /// Builds a multicast event to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing event.
+    /// * `to` – destination [AccountId](../struct.AccountId.html).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let props = OutgoingEvent::multicast(
+    ///     json!({ "foo": "bar" }),
+    ///     request.to_event("message.create", short_term_timing),
+    ///     ,
+    /// );
+    /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"))
+    /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props, &to);
+    /// ```
+    pub fn multicast<A>(payload: T, properties: OutgoingEventProperties, to: &A) -> Self
+    where
+        A: Authenticable,
+    {
+        OutgoingMessage::new(
+            payload,
+            properties,
+            Destination::Multicast(to.as_account_id().to_owned()),
+        )
+    }
 }
 
 impl<T> OutgoingRequest<T>
