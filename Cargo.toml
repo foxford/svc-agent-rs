@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent"
-version = "0.11.4"
+version = "0.12.0"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"

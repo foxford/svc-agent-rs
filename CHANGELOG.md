@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.12.0 (April 21, 2020)
+
+### Breaking changes
+- Changed default value of AgentConfig::reconnect_interval from 10 seconds to never reconnect ([f02869f](https://github.com/netology-group/svc-agent-rs/commit/f02869f3f7cdd44074203715f232684a57d691b7))
+
 ## v0.11.4 (April 17, 2020)
 
 ### Fixes
