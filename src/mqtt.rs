@@ -24,7 +24,7 @@ use crate::{
 /// * `clean_session` – whether to start a clean session or continue the persisted session.
 /// Default: `true`.
 /// * `keep_alive_interval` – keep alive time to ping the broker. Default: 30 sec.
-/// * `reconnect_interval` – reconnection attempts interval. Default: 10 sec.
+/// * `reconnect_interval` – reconnection attempts interval, never reconnect if absent. Default: never reconnect.
 /// * `outgoing_message_queue_size` – maximum messages in-flight. Default: 100.
 /// * `incoming_message_queue_size` – notification channel capacity. Default: 10.
 /// * `max_message_size` – maximum message size in bytes. Default: 256 * 1024.
@@ -183,7 +183,7 @@ impl AgentBuilder {
         };
         opts = match config.reconnect_interval {
             Some(value) => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Always(value)),
-            _ => opts,
+            None => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Never),
         };
         opts = match config.incoming_message_queue_size {
             Some(value) => opts.set_notification_channel_capacity(value),
