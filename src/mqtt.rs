@@ -1781,6 +1781,12 @@ where
                 version = publisher.version(),
                 uri = uri,
             )),
+            Destination::Multicast(ref account_id) => Ok(format!(
+                "agents/{agent_id}/api/{version}/out/{app}",
+                agent_id = publisher.id(),
+                version = publisher.version(),
+                app = account_id,
+            )),
             _ => Err(Error::new(&format!(
                 "destination = '{:?}' is incompatible with event message type",
                 self.destination,
