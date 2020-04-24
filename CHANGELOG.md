@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.12.1 (April 24, 2020)
+
+### Features
+
+- Multicast events ([d70d3963](https://github.com/netology-group/svc-agent-rs/commit/d70d3963f3b19be9aa83b02e258e743fa59a37da) and [fae57b9](https://github.com/netology-group/svc-agent-rs/commit/fae57b9464ceea5f48f1efc60ce4f5760eb25803))
+
 ## v0.12.0 (April 21, 2020)
 
 ### Breaking changes
