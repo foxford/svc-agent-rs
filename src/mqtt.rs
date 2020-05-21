@@ -2,6 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
+use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -138,12 +139,26 @@ impl AgentBuilder {
     pub fn start(
         self,
         config: &AgentConfig,
-    ) -> Result<(Agent, rumqtt::Receiver<rumqtt::Notification>), Error> {
+    ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
-        let (tx, rx) = rumqtt::MqttClient::start(options)
+        let (mqtt_tx, mqtt_rx) = rumqtt::MqttClient::start(options)
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
-        let agent = Agent::new(self.connection.agent_id, &self.api_version, tx);
+        let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
+        std::thread::spawn(move || {
+            for message in mqtt_rx {
+                if let Notification::Publish(ref content) = message {
+                    info!("Incoming message = '{:?}'", content);
+                }
+
+                let msg: AgentNotification = message.into();
+                if let Err(e) = tx.send(msg) {
+                    error!("Failed to transmit message, reason = {}", e);
+                };
+            }
+        });
+
+        let agent = Agent::new(self.connection.agent_id, &self.api_version, mqtt_tx);
         Ok((agent, rx))
     }
 
@@ -280,16 +295,19 @@ impl Agent {
     ///
     /// agent.publish(Box::new(message))?;
     /// ```
-    pub fn publish(&mut self, message: Box<dyn IntoPublishableDump>) -> Result<(), Error> {
-        let dump = message.into_dump(&self.address)?;
+    pub fn publish<T: serde::Serialize>(
+        &mut self,
+        message: OutgoingMessage<T>,
+    ) -> Result<(), Error> {
+        let dump = Box::new(message).into_dump(&self.address)?;
         self.publish_dump(dump)
     }
 
-    /// Publish a dumped message.
+    /// Publish a publishable message.
     ///
     /// # Arguments
     ///
-    /// * `dump` – message dump.
+    /// * `message` – message to publish.
     ///
     /// # Example
     ///
@@ -307,11 +325,31 @@ impl Agent {
     ///     Destination::Unicast(agent.id().clone(), "v1"),
     /// );
     ///
-    /// let dump = Box::new(message).into_dump();
-    /// agent.publish_dump(dump.clone())?;
-    /// println!("Message published: {}", dump);
+    /// let msg = Box::new(message) as Box<dyn IntoPublishableMessage>;
+    /// agent.publish_publishable(msg.clone())?;
+    /// println!("Message published: {}", msg);
     /// ```
-    pub fn publish_dump(&mut self, dump: PublishableDump) -> Result<(), Error> {
+    pub fn publish_publishable(
+        &mut self,
+        message: Box<dyn IntoPublishableMessage>,
+    ) -> Result<(), Error> {
+        let dump = message.into_dump(&self.address)?;
+        self.publish_dump(dump)
+    }
+
+    fn publish_dump(&mut self, dump: PublishableMessage) -> Result<(), Error> {
+        let dump = match dump {
+            PublishableMessage::Event(dump) => dump,
+            PublishableMessage::Request(dump) => dump,
+            PublishableMessage::Response(dump) => dump,
+        };
+
+        info!(
+            "Outgoing message = '{}' sending to the topic = '{}'",
+            dump.payload(),
+            dump.topic(),
+        );
+
         self.tx
             .publish(dump.topic, dump.qos, false, dump.payload)
             .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
@@ -1201,8 +1239,15 @@ impl Addressable for IncomingResponseProperties {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A generic received message.
-#[derive(Debug)]
-pub struct IncomingMessage<T, P>
+#[derive(Debug, Clone)]
+pub enum IncomingMessage<T> {
+    Event(IncomingEvent<T>),
+    Request(IncomingRequest<T>),
+    Response(IncomingResponse<T>),
+}
+
+#[derive(Debug, Clone)]
+pub struct IncomingMessageContent<T, P>
 where
     P: Addressable + serde::Serialize,
 {
@@ -1210,7 +1255,7 @@ where
     properties: P,
 }
 
-impl<T, P> IncomingMessage<T, P>
+impl<T, P> IncomingMessageContent<T, P>
 where
     P: Addressable + serde::Serialize,
 {
@@ -1223,6 +1268,10 @@ where
 
     pub fn payload(&self) -> &T {
         &self.payload
+    }
+
+    pub fn extract_payload(self) -> T {
+        self.payload
     }
 
     pub fn properties(&self) -> &P {
@@ -1257,24 +1306,69 @@ impl<T> IncomingRequest<T> {
         status: ResponseStatus,
         timing: OutgoingShortTermTimingProperties,
         api_version: &str,
-    ) -> OutgoingResponse<R>
+    ) -> OutgoingMessage<R>
     where
         R: serde::Serialize,
     {
-        OutgoingMessage::new(
+        OutgoingMessage::Response(OutgoingResponse::new(
             data,
             self.properties.to_response(status, timing),
             Destination::Unicast(
                 self.properties.as_agent_id().clone(),
                 api_version.to_owned(),
             ),
-        )
+        ))
     }
 }
 
-pub type IncomingEvent<T> = IncomingMessage<T, IncomingEventProperties>;
-pub type IncomingRequest<T> = IncomingMessage<T, IncomingRequestProperties>;
-pub type IncomingResponse<T> = IncomingMessage<T, IncomingResponseProperties>;
+pub type IncomingEvent<T> = IncomingMessageContent<T, IncomingEventProperties>;
+pub type IncomingRequest<T> = IncomingMessageContent<T, IncomingRequestProperties>;
+pub type IncomingResponse<T> = IncomingMessageContent<T, IncomingResponseProperties>;
+
+impl<String: std::ops::Deref<Target = str>> IncomingEvent<String> {
+    pub fn convert_payload<T>(message: &IncomingEvent<String>) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(payload)
+    }
+}
+
+impl<String: std::ops::Deref<Target = str>> IncomingRequest<String> {
+    pub fn convert_payload<T>(message: &IncomingRequest<String>) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(payload)
+    }
+}
+
+impl<String: std::ops::Deref<Target = str>> IncomingResponse<String> {
+    pub fn convert_payload<T>(message: &IncomingResponse<String>) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(payload)
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1498,7 +1592,21 @@ pub type ResponseStatus = http::StatusCode;
 
 /// A generic received message.
 #[derive(Debug)]
-pub struct OutgoingMessage<T, P>
+pub enum OutgoingMessage<T>
+where
+    T: serde::Serialize,
+{
+    Event(OutgoingEvent<T>),
+    Request(OutgoingRequest<T>),
+    Response(OutgoingResponse<T>),
+}
+
+pub type OutgoingEvent<T> = OutgoingMessageContent<T, OutgoingEventProperties>;
+pub type OutgoingRequest<T> = OutgoingMessageContent<T, OutgoingRequestProperties>;
+pub type OutgoingResponse<T> = OutgoingMessageContent<T, OutgoingResponseProperties>;
+
+#[derive(Debug)]
+pub struct OutgoingMessageContent<T, P>
 where
     T: serde::Serialize,
 {
@@ -1507,7 +1615,7 @@ where
     destination: Destination,
 }
 
-impl<T, P> OutgoingMessage<T, P>
+impl<T, P> OutgoingMessageContent<T, P>
 where
     T: serde::Serialize,
 {
@@ -1548,12 +1656,16 @@ where
     ///     "rooms/123/events",
     /// );
     /// ```
-    pub fn broadcast(payload: T, properties: OutgoingEventProperties, to_uri: &str) -> Self {
-        OutgoingMessage::new(
+    pub fn broadcast(
+        payload: T,
+        properties: OutgoingEventProperties,
+        to_uri: &str,
+    ) -> OutgoingMessage<T> {
+        OutgoingMessage::Event(Self::new(
             payload,
             properties,
             Destination::Broadcast(to_uri.to_owned()),
-        )
+        ))
     }
 
     /// Builds a multicast event to publish.
@@ -1575,15 +1687,19 @@ where
     /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"))
     /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props, &to);
     /// ```
-    pub fn multicast<A>(payload: T, properties: OutgoingEventProperties, to: &A) -> Self
+    pub fn multicast<A>(
+        payload: T,
+        properties: OutgoingEventProperties,
+        to: &A,
+    ) -> OutgoingMessage<T>
     where
         A: Authenticable,
     {
-        OutgoingMessage::new(
+        OutgoingMessage::Event(Self::new(
             payload,
             properties,
             Destination::Multicast(to.as_account_id().to_owned()),
-        )
+        ))
     }
 }
 
@@ -1610,15 +1726,19 @@ where
     ///
     /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props);
     /// ```
-    pub fn multicast<A>(payload: T, properties: OutgoingRequestProperties, to: &A) -> Self
+    pub fn multicast<A>(
+        payload: T,
+        properties: OutgoingRequestProperties,
+        to: &A,
+    ) -> OutgoingMessage<T>
     where
         A: Authenticable,
     {
-        OutgoingMessage::new(
+        OutgoingMessage::Request(Self::new(
             payload,
             properties,
             Destination::Multicast(to.as_account_id().clone()),
-        )
+        ))
     }
 
     /// Builds a unicast request to publish.
@@ -1647,15 +1767,15 @@ where
         properties: OutgoingRequestProperties,
         to: &A,
         version: &str,
-    ) -> Self
+    ) -> OutgoingMessage<T>
     where
         A: Addressable,
     {
-        OutgoingMessage::new(
+        OutgoingMessage::Request(Self::new(
             payload,
             properties,
             Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
-        )
+        ))
     }
 }
 
@@ -1685,21 +1805,17 @@ where
         properties: OutgoingResponseProperties,
         to: &A,
         version: &str,
-    ) -> Self
+    ) -> OutgoingMessage<T>
     where
         A: Addressable,
     {
-        OutgoingMessage::new(
+        OutgoingMessage::Response(Self::new(
             payload,
             properties,
             Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
-        )
+        ))
     }
 }
-
-pub type OutgoingEvent<T> = OutgoingMessage<T, OutgoingEventProperties>;
-pub type OutgoingRequest<T> = OutgoingMessage<T, OutgoingRequestProperties>;
-pub type OutgoingResponse<T> = OutgoingMessage<T, OutgoingResponseProperties>;
 
 impl<T> compat::IntoEnvelope for OutgoingEvent<T>
 where
@@ -1749,6 +1865,19 @@ where
     }
 }
 
+impl<T> compat::IntoEnvelope for OutgoingMessage<T>
+where
+    T: serde::Serialize,
+{
+    fn into_envelope(self) -> Result<compat::OutgoingEnvelope, Error> {
+        match self {
+            OutgoingMessage::Event(v) => v.into_envelope(),
+            OutgoingMessage::Response(v) => v.into_envelope(),
+            OutgoingMessage::Request(v) => v.into_envelope(),
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Publishable {
@@ -1769,10 +1898,7 @@ pub trait Publishable {
     fn qos(&self) -> QoS;
 }
 
-impl<T: serde::Serialize> Publishable for OutgoingEvent<T>
-where
-    OutgoingEvent<T>: compat::IntoEnvelope,
-{
+impl<T: serde::Serialize> Publishable for OutgoingEvent<T> {
     fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
         match self.destination {
             Destination::Broadcast(ref uri) => Ok(format!(
@@ -1799,10 +1925,7 @@ where
     }
 }
 
-impl<T: serde::Serialize> Publishable for OutgoingRequest<T>
-where
-    OutgoingRequest<T>: compat::IntoEnvelope,
-{
+impl<T: serde::Serialize> Publishable for OutgoingRequest<T> {
     fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
         match self.destination {
             Destination::Unicast(ref agent_id, ref version) => Ok(format!(
@@ -1829,10 +1952,7 @@ where
     }
 }
 
-impl<T: serde::Serialize> Publishable for OutgoingResponse<T>
-where
-    OutgoingResponse<T>: compat::IntoEnvelope,
-{
+impl<T: serde::Serialize> Publishable for OutgoingResponse<T> {
     fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
         match self.properties().response_topic() {
             Some(response_topic) => Ok(response_topic.to_owned()),
@@ -1856,6 +1976,23 @@ where
     }
 }
 
+impl<T: serde::Serialize> Publishable for OutgoingMessage<T> {
+    fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
+        match self {
+            OutgoingMessage::Event(v) => v.destination_topic(publisher),
+            OutgoingMessage::Response(v) => v.destination_topic(publisher),
+            OutgoingMessage::Request(v) => v.destination_topic(publisher),
+        }
+    }
+
+    fn qos(&self) -> QoS {
+        match self {
+            OutgoingMessage::Event(v) => v.qos(),
+            OutgoingMessage::Response(v) => v.qos(),
+            OutgoingMessage::Request(v) => v.qos(),
+        }
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Dumped version of [Publishable](trait.Publishable.html).
@@ -1880,24 +2017,67 @@ impl PublishableDump {
     }
 }
 
-pub trait IntoPublishableDump {
-    /// Serializes the object into dump that can be directly published.
-    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableDump, Error>;
+pub enum PublishableMessage {
+    Event(PublishableDump),
+    Request(PublishableDump),
+    Response(PublishableDump),
 }
 
-impl<T: Publishable + compat::IntoEnvelope> IntoPublishableDump for T {
-    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableDump, Error> {
+impl PublishableMessage {
+    pub fn topic(&self) -> &str {
+        match self {
+            Self::Event(v) => v.topic(),
+            Self::Request(v) => v.topic(),
+            Self::Response(v) => v.topic(),
+        }
+    }
+
+    pub fn qos(&self) -> QoS {
+        match self {
+            Self::Event(v) => v.qos(),
+            Self::Request(v) => v.qos(),
+            Self::Response(v) => v.qos(),
+        }
+    }
+
+    pub fn payload(&self) -> &str {
+        match self {
+            Self::Event(v) => v.payload(),
+            Self::Request(v) => v.payload(),
+            Self::Response(v) => v.payload(),
+        }
+    }
+}
+
+pub trait IntoPublishableMessage {
+    /// Serializes the object into dump that can be directly published.
+    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableMessage, Error>;
+}
+
+impl<T: serde::Serialize> IntoPublishableMessage for OutgoingMessage<T> {
+    fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableMessage, Error> {
+        use crate::mqtt::compat::{IntoEnvelope, OutgoingEnvelopeProperties};
+
         let topic = self.destination_topic(&publisher)?;
         let qos = self.qos();
 
-        let payload = serde_json::to_string(&self.into_envelope()?)
+        let envelope = &self.into_envelope()?;
+        let payload = serde_json::to_string(envelope)
             .map_err(|e| Error::new(&format!("error serializing an envelope, {}", &e)))?;
 
-        Ok(PublishableDump {
+        let dump = PublishableDump {
             topic,
             qos,
             payload,
-        })
+        };
+
+        let message = match envelope.properties {
+            OutgoingEnvelopeProperties::Event(_) => PublishableMessage::Event(dump),
+            OutgoingEnvelopeProperties::Request(_) => PublishableMessage::Request(dump),
+            OutgoingEnvelopeProperties::Response(_) => PublishableMessage::Response(dump),
+        };
+
+        Ok(message)
     }
 }
 
@@ -2103,7 +2283,7 @@ pub mod compat {
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "lowercase")]
     #[serde(tag = "type")]
-    pub enum IncomingEnvelopeProperties {
+    pub(crate) enum IncomingEnvelopeProperties {
         Event(IncomingEventProperties),
         Request(IncomingRequestProperties),
         Response(IncomingResponseProperties),
@@ -2111,17 +2291,17 @@ pub mod compat {
 
     /// Incoming enveloped message.
     #[derive(Debug, Deserialize)]
-    pub struct IncomingEnvelope {
+    pub(crate) struct IncomingEnvelope {
         payload: String,
         properties: IncomingEnvelopeProperties,
     }
 
     impl IncomingEnvelope {
-        pub fn properties(&self) -> &IncomingEnvelopeProperties {
+        pub(crate) fn properties(&self) -> &IncomingEnvelopeProperties {
             &self.properties
         }
 
-        pub fn payload<T>(&self) -> Result<T, Error>
+        pub(crate) fn payload<T>(&self) -> Result<T, Error>
         where
             T: serde::de::DeserializeOwned,
         {
@@ -2136,37 +2316,43 @@ pub mod compat {
     }
 
     /// Parses an incoming envelope as an event with payload of type `T`.
-    pub fn into_event<T>(envelope: IncomingEnvelope) -> Result<IncomingEvent<T>, Error>
+    pub(crate) fn into_event<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
     where
         T: serde::de::DeserializeOwned,
     {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
-            IncomingEnvelopeProperties::Event(props) => Ok(IncomingMessage::new(payload, props)),
+            IncomingEnvelopeProperties::Event(props) => {
+                Ok(IncomingMessage::Event(IncomingEvent::new(payload, props)))
+            }
             _ => Err(Error::new("error serializing an envelope into event")),
         }
     }
 
     /// Parses an incoming envelope as a request with payload of type `T`.
-    pub fn into_request<T>(envelope: IncomingEnvelope) -> Result<IncomingRequest<T>, Error>
+    pub(crate) fn into_request<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
     where
         T: serde::de::DeserializeOwned,
     {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
-            IncomingEnvelopeProperties::Request(props) => Ok(IncomingMessage::new(payload, props)),
+            IncomingEnvelopeProperties::Request(props) => Ok(IncomingMessage::Request(
+                IncomingRequest::new(payload, props),
+            )),
             _ => Err(Error::new("error serializing an envelope into request")),
         }
     }
 
     /// Parses an incoming envelope as a response with payload of type `T`.
-    pub fn into_response<T>(envelope: IncomingEnvelope) -> Result<IncomingResponse<T>, Error>
+    pub(crate) fn into_response<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
     where
         T: serde::de::DeserializeOwned,
     {
         let payload = envelope.payload::<T>()?;
         match envelope.properties {
-            IncomingEnvelopeProperties::Response(props) => Ok(IncomingMessage::new(payload, props)),
+            IncomingEnvelopeProperties::Response(props) => Ok(IncomingMessage::Response(
+                IncomingResponse::new(payload, props),
+            )),
             _ => Err(Error::new("error serializing an envelope into response")),
         }
     }
@@ -2187,7 +2373,7 @@ pub mod compat {
     #[derive(Debug, Serialize)]
     pub struct OutgoingEnvelope {
         payload: String,
-        properties: OutgoingEnvelopeProperties,
+        pub(crate) properties: OutgoingEnvelopeProperties,
         #[serde(skip)]
         destination: Destination,
     }
@@ -2227,7 +2413,53 @@ pub mod compat {
 ///
 /// Use it to process incoming messages.
 /// See [AgentBuilder::start](struct.AgentBuilder.html#method.start) for details.
-pub use rumqtt::client::Notification;
+use rumqtt::client::Notification;
+use rumqtt::PacketIdentifier;
+
+#[derive(Debug)]
+pub enum AgentNotification {
+    Message(Result<IncomingMessage<String>, String>),
+    Reconnection,
+    Disconnection,
+    PubAck(PacketIdentifier),
+    PubRec(PacketIdentifier),
+    PubRel(PacketIdentifier),
+    PubComp(PacketIdentifier),
+    SubAck(PacketIdentifier),
+    None,
+}
+
+impl From<Notification> for AgentNotification {
+    fn from(notification: Notification) -> Self {
+        match notification {
+            Notification::Publish(message) => {
+                let payload = message.payload;
+                let env_result = serde_json::from_slice::<compat::IncomingEnvelope>(&payload)
+                    .map_err(|err| format!("Failed to parse incoming envelope: {}", err))
+                    .and_then(|env| match env.properties() {
+                        compat::IncomingEnvelopeProperties::Request(_) => compat::into_request(env)
+                            .map_err(|e| format!("Failed to convert into request: {}", e)),
+                        compat::IncomingEnvelopeProperties::Response(_) => {
+                            compat::into_response(env)
+                                .map_err(|e| format!("Failed to convert into response: {}", e))
+                        }
+                        compat::IncomingEnvelopeProperties::Event(_) => compat::into_event(env)
+                            .map_err(|e| format!("Failed to convert into event: {}", e)),
+                    });
+
+                Self::Message(env_result)
+            }
+            Notification::Reconnection => Self::Reconnection,
+            Notification::Disconnection => Self::Disconnection,
+            Notification::PubAck(p) => Self::PubAck(p),
+            Notification::PubRec(p) => Self::PubRec(p),
+            Notification::PubRel(p) => Self::PubRel(p),
+            Notification::PubComp(p) => Self::PubComp(p),
+            Notification::SubAck(p) => Self::SubAck(p),
+            Notification::None => Self::None,
+        }
+    }
+}
 
 /// Quality of service that defines delivery guarantee level.
 ///

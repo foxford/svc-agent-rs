@@ -6,7 +6,7 @@ use serde::{de::DeserializeOwned, ser::Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::{
-    mqtt::{Agent, IncomingResponse, OutgoingRequest},
+    mqtt::{Agent, IncomingResponse, OutgoingMessage, OutgoingRequest},
     Error,
 };
 
@@ -46,16 +46,17 @@ impl Dispatcher {
         store_lock.insert(corr_data.to_owned(), tx);
         drop(store_lock);
 
-        self.agent.clone().publish(Box::new(req))?;
+        self.agent.clone().publish(OutgoingMessage::Request(req))?;
 
         let resp = rx
             .await
             .map_err(|err| Error::new(&format!("Failed to receive response: {}", err)))?;
 
+        let props = resp.properties().to_owned();
         let payload = serde_json::from_value::<Resp>(resp.payload().to_owned())
             .map_err(|err| Error::new(&format!("Failed to parse response payload: {}", err)))?;
 
-        Ok(IncomingResponse::new(payload, resp.properties().to_owned()))
+        Ok(IncomingResponse::new(payload, props))
     }
 
     pub async fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
