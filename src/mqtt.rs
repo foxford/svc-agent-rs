@@ -15,6 +15,9 @@ use crate::{
     RequestSubscription, ResponseSubscription, SharedGroup, Source,
 };
 
+#[cfg(feature = "queue-counter")]
+use crate::queue_counter::QueueCounterHandle;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Agent configuration.
@@ -145,6 +148,11 @@ impl AgentBuilder {
             .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
 
         let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
+        #[cfg(feature = "queue-counter")]
+        let queue_counter = QueueCounterHandle::start();
+        #[cfg(feature = "queue-counter")]
+        let queue_counter_ = queue_counter.clone();
+
         std::thread::spawn(move || {
             for message in mqtt_rx {
                 if let Notification::Publish(ref content) = message {
@@ -152,13 +160,25 @@ impl AgentBuilder {
                 }
 
                 let msg: AgentNotification = message.into();
+                #[cfg(feature = "queue-counter")]
+                {
+                    if let AgentNotification::Message(Ok(ref content)) = msg {
+                        queue_counter_.add_incoming_message(content);
+                    };
+                }
                 if let Err(e) = tx.send(msg) {
                     error!("Failed to transmit message, reason = {}", e);
                 };
             }
         });
+        let agent = Agent::new(
+            self.connection.agent_id,
+            &self.api_version,
+            mqtt_tx,
+            #[cfg(feature = "queue-counter")]
+            queue_counter,
+        );
 
-        let agent = Agent::new(self.connection.agent_id, &self.api_version, mqtt_tx);
         Ok((agent, rx))
     }
 
@@ -247,9 +267,26 @@ impl Address {
 pub struct Agent {
     address: Address,
     tx: rumqtt::MqttClient,
+    #[cfg(feature = "queue-counter")]
+    queue_counter: QueueCounterHandle,
 }
 
 impl Agent {
+    #[cfg(feature = "queue-counter")]
+    fn new(
+        id: AgentId,
+        api_version: &str,
+        tx: rumqtt::MqttClient,
+        queue_counter: QueueCounterHandle,
+    ) -> Self {
+        Self {
+            address: Address::new(id, api_version),
+            tx,
+            queue_counter,
+        }
+    }
+
+    #[cfg(not(feature = "queue-counter"))]
     fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
         Self {
             address: Address::new(id, api_version),
@@ -338,6 +375,9 @@ impl Agent {
     }
 
     fn publish_dump(&mut self, dump: PublishableMessage) -> Result<(), Error> {
+        #[cfg(feature = "queue-counter")]
+        self.queue_counter.add_outgoing_message(&dump);
+
         let dump = match dump {
             PublishableMessage::Event(dump) => dump,
             PublishableMessage::Request(dump) => dump,
@@ -391,6 +431,11 @@ impl Agent {
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
+    }
+
+    #[cfg(feature = "queue-counter")]
+    pub fn get_queue_counter(&self) -> QueueCounterHandle {
+        self.queue_counter.clone()
     }
 }
 
@@ -1338,6 +1383,20 @@ impl<String: std::ops::Deref<Target = str>> IncomingEvent<String> {
         })?;
         Ok(payload)
     }
+
+    pub fn convert<T>(message: IncomingEvent<String>) -> Result<IncomingEvent<T>, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let props = message.properties().to_owned();
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(IncomingEvent::new(payload, props))
+    }
 }
 
 impl<String: std::ops::Deref<Target = str>> IncomingRequest<String> {
@@ -1353,6 +1412,20 @@ impl<String: std::ops::Deref<Target = str>> IncomingRequest<String> {
         })?;
         Ok(payload)
     }
+
+    pub fn convert<T>(message: IncomingRequest<String>) -> Result<IncomingRequest<T>, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let props = message.properties().to_owned();
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(IncomingRequest::new(payload, props))
+    }
 }
 
 impl<String: std::ops::Deref<Target = str>> IncomingResponse<String> {
@@ -1367,6 +1440,20 @@ impl<String: std::ops::Deref<Target = str>> IncomingResponse<String> {
             ))
         })?;
         Ok(payload)
+    }
+
+    pub fn convert<T>(message: IncomingResponse<String>) -> Result<IncomingResponse<T>, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let props = message.properties().to_owned();
+        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+            Error::new(&format!(
+                "error deserializing payload of an envelope, {}",
+                &e
+            ))
+        })?;
+        Ok(IncomingResponse::new(payload, props))
     }
 }
 
@@ -2300,27 +2387,11 @@ pub mod compat {
         pub(crate) fn properties(&self) -> &IncomingEnvelopeProperties {
             &self.properties
         }
-
-        pub(crate) fn payload<T>(&self) -> Result<T, Error>
-        where
-            T: serde::de::DeserializeOwned,
-        {
-            let payload = serde_json::from_str::<T>(&self.payload).map_err(|e| {
-                Error::new(&format!(
-                    "error deserializing payload of an envelope, {}",
-                    &e
-                ))
-            })?;
-            Ok(payload)
-        }
     }
 
     /// Parses an incoming envelope as an event with payload of type `T`.
-    pub(crate) fn into_event<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let payload = envelope.payload::<T>()?;
+    pub(crate) fn into_event(envelope: IncomingEnvelope) -> Result<IncomingMessage<String>, Error> {
+        let payload = envelope.payload;
         match envelope.properties {
             IncomingEnvelopeProperties::Event(props) => {
                 Ok(IncomingMessage::Event(IncomingEvent::new(payload, props)))
@@ -2330,11 +2401,10 @@ pub mod compat {
     }
 
     /// Parses an incoming envelope as a request with payload of type `T`.
-    pub(crate) fn into_request<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let payload = envelope.payload::<T>()?;
+    pub(crate) fn into_request(
+        envelope: IncomingEnvelope,
+    ) -> Result<IncomingMessage<String>, Error> {
+        let payload = envelope.payload;
         match envelope.properties {
             IncomingEnvelopeProperties::Request(props) => Ok(IncomingMessage::Request(
                 IncomingRequest::new(payload, props),
@@ -2344,11 +2414,10 @@ pub mod compat {
     }
 
     /// Parses an incoming envelope as a response with payload of type `T`.
-    pub(crate) fn into_response<T>(envelope: IncomingEnvelope) -> Result<IncomingMessage<T>, Error>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let payload = envelope.payload::<T>()?;
+    pub(crate) fn into_response(
+        envelope: IncomingEnvelope,
+    ) -> Result<IncomingMessage<String>, Error> {
+        let payload = envelope.payload;
         match envelope.properties {
             IncomingEnvelopeProperties::Response(props) => Ok(IncomingMessage::Response(
                 IncomingResponse::new(payload, props),
