@@ -1,5 +1,7 @@
 //! Tests broadcast event publishing/subscription.
 
+use std::time::Duration;
+
 use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
@@ -27,10 +29,8 @@ fn run_event_service() {
 
     // Sending broadcast event.
     let evp = OutgoingEventProperties::new("hello", ShortTermTimingProperties::new(Utc::now()));
-
     let payload = json!({"foo": "bar"});
     let event = OutgoingEvent::broadcast(payload, evp, URI);
-
     agent.publish(event).expect("Failed to publish event");
 }
 
@@ -55,11 +55,17 @@ fn broadcast_event() {
         .subscribe(&subscription, QoS::AtLeastOnce, None)
         .expect("Error subscribing to unicast responses");
 
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
+
     // Start event service which broadcasts a single event.
     run_event_service();
 
     // Receive event.
-    match rx.recv() {
+    match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Message(Ok(message), _)) => {
             match message {
                 IncomingMessage::Event(event) => {
@@ -72,7 +78,7 @@ fn broadcast_event() {
                         Err(err) => panic!("Failed to parse event: {}", err),
                     }
                 }
-                e => panic!(e),
+                other => panic!("Unexpected message: {:?}", other),
             }
         }
         Ok(other) => panic!("Expected to receive publish notification, got {:?}", other),

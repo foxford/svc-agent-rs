@@ -1,4 +1,5 @@
 use std::sync::mpsc;
+use std::time::Duration;
 
 use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
@@ -34,6 +35,12 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
             Some(&SharedGroup::new("loadbalancer", account_id)),
         )
         .expect("Error subscribing to multicast requests");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
 
     // Notifying that the service is initialized.
     init_tx.send(()).expect("Failed to notify about init");

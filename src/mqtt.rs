@@ -2,7 +2,12 @@ use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
+use futures::StreamExt;
+use futures_channel::mpsc::UnboundedSender;
 use log::{error, info};
+use rumq_client::{
+    MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback, Subscribe,
+};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -144,9 +149,9 @@ impl AgentBuilder {
         config: &AgentConfig,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
-        let (mqtt_tx, mqtt_rx) = rumqtt::MqttClient::start(options)
-            .map_err(|e| Error::new(&format!("error starting MQTT client, {}", e)))?;
-
+        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::unbounded::<Request>();
+        let mut eventloop = rumq_client::eventloop(options, mqtt_rx);
+        let reconnect_interval = config.reconnect_interval.to_owned();
         let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
         #[cfg(feature = "queue-counter")]
         let queue_counter = QueueCounterHandle::start();
@@ -154,21 +159,57 @@ impl AgentBuilder {
         let queue_counter_ = queue_counter.clone();
 
         std::thread::spawn(move || {
-            for message in mqtt_rx {
-                if let Notification::Publish(ref content) = message {
-                    info!("Incoming message = '{:?}'", content);
-                }
+            let mut rt = tokio::runtime::Runtime::new().expect("Failed to start tokio runtime");
+            let mut initial_connect = true;
 
-                let msg: AgentNotification = message.into();
+            // Reconnect loop
+            loop {
+                let tx = tx.clone();
+                let connect_fut = eventloop.connect();
                 #[cfg(feature = "queue-counter")]
-                {
-                    if let AgentNotification::Message(Ok(ref content), _) = msg {
-                        queue_counter_.add_incoming_message(content);
-                    };
+                let queue_counter_ = queue_counter_.clone();
+
+                rt.block_on(async move {
+                    match connect_fut.await {
+                        Err(err) => error!("Error connecting to broker: {}", err),
+                        Ok(mut stream) => {
+                            if initial_connect {
+                                initial_connect = false;
+                            } else if let Err(e) = tx.send(AgentNotification::Reconnection) {
+                                error!("Failed to notify about reconnection: {}", e);
+                            }
+
+                            // Message loop
+                            while let Some(message) = stream.next().await {
+                                if let Notification::Publish(ref content) = message {
+                                    info!("Incoming message = '{:?}'", content);
+                                }
+
+                                let msg: AgentNotification = message.into();
+
+                                #[cfg(feature = "queue-counter")]
+                                {
+                                    if let AgentNotification::Message(Ok(ref content), _) = msg {
+                                        queue_counter_.add_incoming_message(content);
+                                    };
+                                }
+
+                                if let Err(e) = tx.send(msg) {
+                                    error!("Failed to transmit message, reason = {}", e);
+                                };
+                            }
+
+                            if let Err(e) = tx.send(AgentNotification::Disconnection) {
+                                error!("Failed to notify about disconnection: {}", e);
+                            }
+                        }
+                    }
+                });
+
+                match reconnect_interval {
+                    Some(value) => std::thread::sleep(std::time::Duration::from_secs(value)),
+                    None => break,
                 }
-                if let Err(e) = tx.send(msg) {
-                    error!("Failed to transmit message, reason = {}", e);
-                };
             }
         });
         let agent = Agent::new(
@@ -182,10 +223,7 @@ impl AgentBuilder {
         Ok((agent, rx))
     }
 
-    fn mqtt_options(
-        connection: &Connection,
-        config: &AgentConfig,
-    ) -> Result<rumqtt::MqttOptions, Error> {
+    fn mqtt_options(connection: &Connection, config: &AgentConfig) -> Result<MqttOptions, Error> {
         let uri = config
             .uri
             .parse::<http::Uri>()
@@ -204,37 +242,28 @@ impl AgentBuilder {
             .to_owned()
             .unwrap_or_else(|| String::from(""));
 
-        // TODO: change to convenient code as soon as the PR will be merged
-        // https://github.com/AtherEnergy/rumqtt/pull/145
-        let mut opts =
-            rumqtt::MqttOptions::new(connection.agent_id.to_string(), host, port.as_u16());
-        opts = match config.clean_session {
-            Some(value) => opts.set_clean_session(value),
-            _ => opts,
+        let mut opts = MqttOptions::new(connection.agent_id.to_string(), host, port.as_u16());
+        opts.set_credentials(username, password);
+
+        if let Some(value) = config.clean_session {
+            opts.set_clean_session(value);
+        }
+
+        if let Some(value) = config.keep_alive_interval {
+            opts.set_keep_alive(value as u16);
+        }
+
+        if let Some(value) = config.incoming_message_queue_size {
+            opts.set_notification_channel_capacity(value);
+        }
+
+        if let Some(value) = config.outgoing_message_queue_size {
+            opts.set_inflight(value);
+        }
+
+        if let Some(value) = config.max_message_size {
+            opts.set_max_packet_size(value);
         };
-        opts = match config.keep_alive_interval {
-            Some(value) => opts.set_keep_alive(value as u16),
-            _ => opts,
-        };
-        opts = match config.reconnect_interval {
-            Some(value) => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Always(value)),
-            None => opts.set_reconnect_opts(rumqtt::ReconnectOptions::Never),
-        };
-        opts = match config.incoming_message_queue_size {
-            Some(value) => opts.set_notification_channel_capacity(value),
-            _ => opts,
-        };
-        opts = match config.outgoing_message_queue_size {
-            Some(value) => opts.set_inflight(value),
-            _ => opts,
-        };
-        opts = match config.max_message_size {
-            Some(value) => opts.set_max_packet_size(value),
-            _ => opts,
-        };
-        opts = opts.set_security_opts(rumqtt::SecurityOptions::UsernamePassword(
-            username, password,
-        ));
 
         Ok(opts)
     }
@@ -266,7 +295,7 @@ impl Address {
 #[derive(Clone)]
 pub struct Agent {
     address: Address,
-    tx: rumqtt::MqttClient,
+    tx: UnboundedSender<Request>,
     #[cfg(feature = "queue-counter")]
     queue_counter: QueueCounterHandle,
 }
@@ -276,7 +305,7 @@ impl Agent {
     fn new(
         id: AgentId,
         api_version: &str,
-        tx: rumqtt::MqttClient,
+        tx: UnboundedSender<Request>,
         queue_counter: QueueCounterHandle,
     ) -> Self {
         Self {
@@ -287,7 +316,7 @@ impl Agent {
     }
 
     #[cfg(not(feature = "queue-counter"))]
-    fn new(id: AgentId, api_version: &str, tx: rumqtt::MqttClient) -> Self {
+    fn new(id: AgentId, api_version: &str, tx: UnboundedSender<Request>) -> Self {
         Self {
             address: Address::new(id, api_version),
             tx,
@@ -330,7 +359,7 @@ impl Agent {
     ///     Destination::Unicast(agent.id().clone(), "v1"),
     /// );
     ///
-    /// agent.publish(Box::new(message))?;
+    /// agent.publish(message)?;
     /// ```
     pub fn publish<T: serde::Serialize>(
         &mut self,
@@ -390,12 +419,17 @@ impl Agent {
             dump.topic(),
         );
 
+        let publish = Publish::new(dump.topic, dump.qos, dump.payload);
+
         self.tx
-            .publish(dump.topic, dump.qos, false, dump.payload)
+            .unbounded_send(Request::Publish(publish))
             .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
     }
 
     /// Subscribe to a topic.
+    ///
+    /// Note that the subscription is actually gets confirmed on receiving
+    /// `AgentNotification::Suback` notification.
     ///
     /// # Arguments
     ///
@@ -411,6 +445,12 @@ impl Agent {
     ///     QoS::AtMostOnce,
     ///     Some(&group),
     /// )?;
+    ///
+    /// match rx.recv_timeout(Duration::from_secs(5)) {
+    ///     Ok(AgentNotification::Suback(_)) => (),
+    ///     Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+    ///     Err(err) => panic!("Failed to receive suback notification: {}", err),
+    /// }
     /// ```
     pub fn subscribe<S>(
         &mut self,
@@ -427,7 +467,7 @@ impl Agent {
         };
 
         self.tx
-            .subscribe(topic, qos)
+            .unbounded_send(Request::Subscribe(Subscribe::new(topic, qos)))
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
@@ -2294,9 +2334,8 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
 /// MQTT 3.1 compatibility utilities.
 ///
 /// [mqtt-gateway](https://github.com/netology-group/mqtt-gateway) supports both MQTT 3.1 and MQTT 5
-/// protocol versions. However svc-agent is based on [rumqtt](https://github.com/AtherEnergy/rumqtt)
-/// MQTT client which only supports MQTT 3.1 because there's no pure Rust implementation of MQTT 5
-/// client yet.
+/// protocol versions. However svc-agent is based on [rumq](https://github.com/tekjar/rumq)
+/// MQTT client which currently only supports MQTT 3.1.
 ///
 /// MQTT 5 introduces message properties that are somewhat like HTTP headers.
 /// An alternative for them in MQTT 3.1 is to send this data right in the message payload.
@@ -2490,20 +2529,17 @@ pub mod compat {
 ///
 /// Use it to process incoming messages.
 /// See [AgentBuilder::start](struct.AgentBuilder.html#method.start) for details.
-use rumqtt::client::Notification;
-use rumqtt::PacketIdentifier;
-
 #[derive(Debug)]
 pub enum AgentNotification {
     Message(Result<IncomingMessage<String>, String>, MessageData),
     Reconnection,
     Disconnection,
-    PubAck(PacketIdentifier),
-    PubRec(PacketIdentifier),
-    PubRel(PacketIdentifier),
-    PubComp(PacketIdentifier),
-    SubAck(PacketIdentifier),
-    None,
+    Puback(PacketIdentifier),
+    Pubrec(PacketIdentifier),
+    Pubcomp(PacketIdentifier),
+    Suback(Suback),
+    Unsuback(PacketIdentifier),
+    Abort(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2545,14 +2581,12 @@ impl From<Notification> for AgentNotification {
 
                 Self::Message(env_result, message_data)
             }
-            Notification::Reconnection => Self::Reconnection,
-            Notification::Disconnection => Self::Disconnection,
-            Notification::PubAck(p) => Self::PubAck(p),
-            Notification::PubRec(p) => Self::PubRec(p),
-            Notification::PubRel(p) => Self::PubRel(p),
-            Notification::PubComp(p) => Self::PubComp(p),
-            Notification::SubAck(p) => Self::SubAck(p),
-            Notification::None => Self::None,
+            Notification::Puback(p) => Self::Puback(p),
+            Notification::Pubrec(p) => Self::Pubrec(p),
+            Notification::Pubcomp(p) => Self::Pubcomp(p),
+            Notification::Suback(s) => Self::Suback(s),
+            Notification::Unsuback(p) => Self::Unsuback(p),
+            Notification::Abort(err) => Self::Abort(err.to_string()),
         }
     }
 }
@@ -2570,4 +2604,4 @@ impl From<Notification> for AgentNotification {
 /// svc-agent sets QoS = 0 for outgoing events and responses and QoS = 1 for outgoing requests.
 /// This means that only requests are guaranteed to be delivered to the broker but duplicates
 /// are possible so maintaining request idempotency is up to agents.
-pub use rumqtt::QoS;
+pub use rumq_client::QoS;
