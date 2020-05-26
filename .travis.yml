@@ -23,6 +23,9 @@ jobs:
     - stage: build
       name: Build w/o features
       script: cargo build
+    - stage: build
+      name: Build with queue-counter feature
+      script: cargo build --features queue-counter
     ## Require 'svc-authn' w/ diesel feature
     # - stage: build
     #   name: Build w/ diesel
