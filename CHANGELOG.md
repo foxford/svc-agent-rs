@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.13.0 (May 26, 2020)
+
+### Breaking changes
+
+- Reworked IncomingMessage and OutgoingMessage as enums ([96f3ab0](https://github.com/netology-group/svc-agent-rs/commit/96f3ab053bf3a8a39c15687cbaf3c20f0d9606ad))
+
+### Features
+
+- Added queue-counter feature ([d17357e](https://github.com/netology-group/svc-agent-rs/commit/d17357e494b0901d8f659aa8c836a850756c5771))
+
 ## v0.12.1 (April 24, 2020)
 
 ### Features
