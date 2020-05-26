@@ -8,8 +8,9 @@ use serde_derive::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, ConnectionMode, IncomingResponse, Notification, OutgoingRequest,
-        OutgoingRequestProperties, QoS, ShortTermTimingProperties, SubscriptionTopic,
+        AgentBuilder, AgentNotification, ConnectionMode, IncomingMessage, IncomingResponse,
+        OutgoingMessage, OutgoingRequest, OutgoingRequestProperties, QoS,
+        ShortTermTimingProperties, SubscriptionTopic,
     },
     request::Dispatcher,
     AccountId, AgentId, Subscription,
@@ -62,20 +63,15 @@ fn request_dispatcher() {
 
     // ASynchronous message handling loop.
     pool.spawn_ok(async move {
-        while let Ok(Notification::Publish(message)) = rx.recv() {
-            let bytes = message.payload.as_slice();
-
-            let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-                .expect("Failed to parse incoming message");
-
+        while let Ok(AgentNotification::Message(Ok(IncomingMessage::Response(resp)))) = rx.recv() {
             // Handle response.
-            match compat::into_response::<JsonValue>(envelope) {
-                Err(err) => panic!("Failed to parse response: {}", err),
-                Ok(response) => dispatcher_clone
-                    .response(response)
-                    .await
-                    .expect("Failed to dispatch response"),
-            }
+            let message =
+                IncomingResponse::convert::<JsonValue>(resp).expect("Couldnt convert message");
+
+            dispatcher_clone
+                .response(message)
+                .await
+                .expect("Failed to dispatch response")
         }
     });
 
@@ -122,11 +118,16 @@ async fn publish_request(
     );
 
     let payload = json!({"message": "ping"});
-    let request = OutgoingRequest::multicast(payload, reqp, to);
+    let msg = OutgoingRequest::multicast(payload, reqp, to);
 
-    // Send request and wait for the response.
-    dispatcher
-        .request(request)
-        .await
-        .expect("Failed to dispatch request")
+    match msg {
+        OutgoingMessage::Request(request) => {
+            // Send request and wait for the response.
+            dispatcher
+                .request(request)
+                .await
+                .expect("Failed to dispatch request")
+        }
+        _ => panic!("wrong message type"),
+    }
 }
