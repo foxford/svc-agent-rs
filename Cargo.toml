@@ -16,6 +16,9 @@ travis-ci = { repository = "netology-group/svc-agent-rs" }
 [lib]
 doctest = false
 
+[features]
+queue-counter = []
+
 [dependencies]
 serde = "1.0"
 serde_derive = "1.0"
