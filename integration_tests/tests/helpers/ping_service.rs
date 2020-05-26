@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, ConnectionMode, Notification, OutgoingResponse, QoS, ResponseStatus,
-        ShortTermTimingProperties,
+        AgentBuilder, AgentNotification, ConnectionMode, IncomingMessage, OutgoingResponse, QoS,
+        ResponseStatus, ShortTermTimingProperties,
     },
     AccountId, AgentId, SharedGroup, Subscription,
 };
@@ -39,17 +39,14 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
     init_tx.send(()).expect("Failed to notify about init");
 
     // Message handling loop.
-    while let Ok(Notification::Publish(message)) = rx.recv() {
-        let bytes = message.payload.as_slice();
-
-        let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-            .expect("Failed to parse incoming message");
-
-        // Handle request.
-        match compat::into_request::<JsonValue>(envelope) {
-            Ok(request) => {
+    while let Ok(AgentNotification::Message(message)) = rx.recv() {
+        match message {
+            Ok(IncomingMessage::Request(request)) => {
+                // Handle request.
                 assert_eq!(request.properties().method(), "ping");
-                assert_eq!(request.payload()["message"].as_str(), Some("ping"));
+                let content: JsonValue =
+                    serde_json::from_str(request.payload()).expect("Couldnt parse json");
+                assert_eq!(content["message"].as_str(), Some("ping"));
 
                 let props = request.properties().to_response(
                     ResponseStatus::CREATED,
@@ -63,11 +60,9 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
                     API_VERSION,
                 );
 
-                agent
-                    .publish(Box::new(response))
-                    .expect("Failed to publish response");
+                agent.publish(response).expect("Failed to publish response");
             }
-            Err(err) => panic!(err),
+            e => panic!(e),
         }
     }
 }

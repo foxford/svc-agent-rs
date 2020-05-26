@@ -8,7 +8,7 @@ use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, ConnectionMode, Notification, OutgoingRequest,
+        AgentBuilder, AgentNotification, ConnectionMode, IncomingMessage, OutgoingRequest,
         OutgoingRequestProperties, QoS, ResponseStatus, ShortTermTimingProperties,
         SubscriptionTopic,
     },
@@ -64,27 +64,18 @@ fn request_response() {
     let payload = json!({"message": "ping"});
     let request = OutgoingRequest::multicast(payload, reqp, &service_account_id);
 
-    agent
-        .publish(Box::new(request))
-        .expect("Failed to publish request");
+    agent.publish(request).expect("Failed to publish request");
 
     // Receive response.
     match rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(Notification::Publish(message)) => {
-            let bytes = message.payload.as_slice();
-
-            let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-                .expect("Failed to parse incoming message");
-
+        Ok(AgentNotification::Message(Ok(IncomingMessage::Response(response)))) => {
             // Handle response.
-            match compat::into_response::<JsonValue>(envelope) {
-                Ok(response) => {
-                    assert_eq!(response.properties().status(), ResponseStatus::CREATED);
-                    assert_eq!(response.properties().correlation_data(), CORRELATION_DATA);
-                    assert_eq!(response.payload()["message"].as_str(), Some("pong"));
-                }
-                Err(err) => panic!("Failed to parse response: {}", err),
-            }
+            assert_eq!(response.properties().status(), ResponseStatus::CREATED);
+            assert_eq!(response.properties().correlation_data(), CORRELATION_DATA);
+
+            let content =
+                serde_json::from_str::<JsonValue>(response.payload()).expect("Couldnt parse json");
+            assert_eq!(content["message"].as_str(), Some("pong"));
         }
         Ok(other) => panic!("Expected to receive publish notification, got {:?}", other),
         Err(err) => panic!("Failed to receive response: {}", err),

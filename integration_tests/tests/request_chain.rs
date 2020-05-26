@@ -13,9 +13,10 @@ use serde_derive::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, ConnectionMode, Notification, OutgoingRequest,
-        OutgoingRequestProperties, OutgoingResponse, OutgoingResponseProperties, QoS,
-        ResponseStatus, ShortTermTimingProperties, SubscriptionTopic,
+        AgentBuilder, AgentNotification, ConnectionMode, IncomingMessage, IncomingRequest,
+        IncomingResponse, OutgoingRequest, OutgoingRequestProperties, OutgoingResponse,
+        OutgoingResponseProperties, QoS, ResponseStatus, ShortTermTimingProperties,
+        SubscriptionTopic,
     },
     AccountId, AgentId, SharedGroup, Subscription,
 };
@@ -79,16 +80,11 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
         .expect("Failed to notify about init in service A");
 
     // Message handling loop.
-    while let Ok(Notification::Publish(message)) = rx.recv() {
-        let bytes = message.payload.as_slice();
-
-        let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-            .expect("Failed to parse incoming message in service A");
-
-        match envelope.properties() {
+    while let Ok(AgentNotification::Message(Ok(message))) = rx.recv() {
+        match message {
             // Handle request: Client->A.
-            compat::IncomingEnvelopeProperties::Request(_) => {
-                match compat::into_request::<JsonValue>(envelope) {
+            IncomingMessage::Request(req) => {
+                match IncomingRequest::convert::<JsonValue>(req) {
                     Ok(request) => {
                         // Register to state.
                         let correlation_data = generate_correlation_data();
@@ -120,15 +116,15 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                         );
 
                         agent
-                            .publish(Box::new(b_request))
+                            .publish(b_request)
                             .expect("Failed to make request to service B");
                     }
                     Err(err) => panic!(err),
                 }
             }
             // Handle response: B->A.
-            compat::IncomingEnvelopeProperties::Response(_) => {
-                match compat::into_response::<JsonValue>(envelope) {
+            IncomingMessage::Response(resp) => {
+                match IncomingResponse::convert::<JsonValue>(resp) {
                     Ok(response) => {
                         // Find record in state.
                         let (agent_id, correlation_data) = state
@@ -157,13 +153,13 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             OutgoingResponse::unicast(json!({}), props, agent_id, A_API_VERSION);
 
                         agent
-                            .publish(Box::new(response))
+                            .publish(response)
                             .expect("Failed to make request to service B");
                     }
                     Err(err) => panic!(err),
                 }
             }
-            compat::IncomingEnvelopeProperties::Event(_) => {
+            IncomingMessage::Event(_) => {
                 panic!("Unexpected incoming event in service A");
             }
         }
@@ -194,32 +190,30 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
         .expect("Failed to notify about init in service B");
 
     // Message handling loop.
-    while let Ok(Notification::Publish(message)) = rx.recv() {
-        let bytes = message.payload.as_slice();
-
-        let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-            .expect("Failed to parse incoming message");
-
+    while let Ok(AgentNotification::Message(Ok(message))) = rx.recv() {
         // Handle request.
-        match compat::into_request::<JsonValue>(envelope) {
-            Ok(request) => {
-                let props = request.properties().to_response(
-                    ResponseStatus::OK,
-                    ShortTermTimingProperties::new(Utc::now()),
-                );
+        match message {
+            IncomingMessage::Request(req) => match IncomingRequest::convert::<JsonValue>(req) {
+                Ok(request) => {
+                    let props = request.properties().to_response(
+                        ResponseStatus::OK,
+                        ShortTermTimingProperties::new(Utc::now()),
+                    );
 
-                let response = OutgoingResponse::unicast(
-                    json!({}),
-                    props,
-                    request.properties(),
-                    A_API_VERSION,
-                );
+                    let response = OutgoingResponse::unicast(
+                        json!({}),
+                        props,
+                        request.properties(),
+                        A_API_VERSION,
+                    );
 
-                agent
-                    .publish(Box::new(response))
-                    .expect("Failed to publish response in service B");
-            }
-            Err(err) => panic!(err),
+                    agent
+                        .publish(response)
+                        .expect("Failed to publish response in service B");
+                }
+                Err(err) => panic!(err),
+            },
+            e => panic!(e),
         }
     }
 }
@@ -277,57 +271,56 @@ fn request_chain() {
 
     let request = OutgoingRequest::multicast(json!({}), reqp, &service_a_account_id);
 
-    agent
-        .publish(Box::new(request))
-        .expect("Failed to publish request");
+    agent.publish(request).expect("Failed to publish request");
 
     // Receive response.
     match rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(Notification::Publish(message)) => {
-            let bytes = message.payload.as_slice();
+        Ok(AgentNotification::Message(Ok(message))) => {
+            match message {
+                IncomingMessage::Response(resp) => {
+                    // Handle response.
+                    match IncomingResponse::convert::<JsonValue>(resp) {
+                        Ok(response) => {
+                            assert_eq!(response.properties().status(), ResponseStatus::OK);
+                            assert_eq!(response.properties().correlation_data(), &correlation_data);
 
-            let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-                .expect("Failed to parse incoming message");
+                            // Assert timings.
+                            let long_term_timings = response.properties().long_term_timing();
 
-            // Handle response.
-            match compat::into_response::<JsonValue>(envelope) {
-                Ok(response) => {
-                    assert_eq!(response.properties().status(), ResponseStatus::OK);
-                    assert_eq!(response.properties().correlation_data(), &correlation_data);
+                            let long_term_timings_value = serde_json::to_value(long_term_timings)
+                                .expect("Failed to dump timings");
 
-                    // Assert timings.
-                    let long_term_timings = response.properties().long_term_timing();
+                            let timings =
+                                serde_json::from_value::<Timings>(long_term_timings_value)
+                                    .expect("Failed to parse timings");
 
-                    let long_term_timings_value =
-                        serde_json::to_value(long_term_timings).expect("Failed to dump timings");
+                            let proc_time = timings.cumulative_processing_time;
+                            assert!(proc_time.parse::<u64>().unwrap() >= 20000);
 
-                    let timings = serde_json::from_value::<Timings>(long_term_timings_value)
-                        .expect("Failed to parse timings");
+                            let authz_time = timings.cumulative_authorization_time;
+                            assert!(authz_time.parse::<u64>().unwrap() >= 10000);
 
-                    let proc_time = timings.cumulative_processing_time;
-                    assert!(proc_time.parse::<u64>().unwrap() >= 20000);
+                            // Assert tracking.
+                            let tracking = serde_json::to_value(response.properties().tracking())
+                                .expect("Failed to parse timings");
 
-                    let authz_time = timings.cumulative_authorization_time;
-                    assert!(authz_time.parse::<u64>().unwrap() >= 10000);
+                            let session_tracking_label = tracking
+                                .get("session_tracking_label")
+                                .expect("Missing session_tracking_label")
+                                .as_str()
+                                .expect("session_tracking_label is not a string");
 
-                    // Assert tracking.
-                    let tracking = serde_json::to_value(response.properties().tracking())
-                        .expect("Failed to parse timings");
+                            let ids: Vec<String> = session_tracking_label
+                                .split_whitespace()
+                                .map(|s| s.to_owned())
+                                .collect();
 
-                    let session_tracking_label = tracking
-                        .get("session_tracking_label")
-                        .expect("Missing session_tracking_label")
-                        .as_str()
-                        .expect("session_tracking_label is not a string");
-
-                    let ids: Vec<String> = session_tracking_label
-                        .split_whitespace()
-                        .map(|s| s.to_owned())
-                        .collect();
-
-                    assert_eq!(ids.len(), 3);
+                            assert_eq!(ids.len(), 3);
+                        }
+                        Err(err) => panic!("Failed to parse response: {}", err),
+                    }
                 }
-                Err(err) => panic!("Failed to parse response: {}", err),
+                e => panic!(e),
             }
         }
         Ok(other) => panic!("Expected to receive publish notification, got {:?}", other),

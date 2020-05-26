@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
-        compat, AgentBuilder, ConnectionMode, Notification, OutgoingEvent, OutgoingEventProperties,
-        QoS, ShortTermTimingProperties,
+        AgentBuilder, AgentNotification, ConnectionMode, IncomingEvent, IncomingMessage,
+        OutgoingEvent, OutgoingEventProperties, QoS, ShortTermTimingProperties,
     },
     AccountId, AgentId, Subscription,
 };
@@ -31,9 +31,7 @@ fn run_event_service() {
     let payload = json!({"foo": "bar"});
     let event = OutgoingEvent::broadcast(payload, evp, URI);
 
-    agent
-        .publish(Box::new(event))
-        .expect("Failed to publish event");
+    agent.publish(event).expect("Failed to publish event");
 }
 
 #[test]
@@ -62,19 +60,19 @@ fn broadcast_event() {
 
     // Receive event.
     match rx.recv() {
-        Ok(Notification::Publish(message)) => {
-            let bytes = message.payload.as_slice();
-
-            let envelope = serde_json::from_slice::<compat::IncomingEnvelope>(bytes)
-                .expect("Failed to parse incoming message");
-
-            // Handle response.
-            match compat::into_event::<JsonValue>(envelope) {
-                Ok(response) => {
-                    assert_eq!(response.properties().label(), Some("hello"));
-                    assert_eq!(response.payload()["foo"].as_str(), Some("bar"));
+        Ok(AgentNotification::Message(Ok(message))) => {
+            match message {
+                IncomingMessage::Event(event) => {
+                    // Handle response.
+                    match IncomingEvent::convert::<JsonValue>(event) {
+                        Ok(response) => {
+                            assert_eq!(response.properties().label(), Some("hello"));
+                            assert_eq!(response.payload()["foo"].as_str(), Some("bar"));
+                        }
+                        Err(err) => panic!("Failed to parse event: {}", err),
+                    }
                 }
-                Err(err) => panic!("Failed to parse event: {}", err),
+                e => panic!(e),
             }
         }
         Ok(other) => panic!("Expected to receive publish notification, got {:?}", other),
