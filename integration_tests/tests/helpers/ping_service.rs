@@ -39,7 +39,7 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
     init_tx.send(()).expect("Failed to notify about init");
 
     // Message handling loop.
-    while let Ok(AgentNotification::Message(message)) = rx.recv() {
+    while let Ok(AgentNotification::Message(message, _)) = rx.recv() {
         match message {
             Ok(IncomingMessage::Request(request)) => {
                 // Handle request.

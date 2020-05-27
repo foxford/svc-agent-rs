@@ -80,7 +80,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
         .expect("Failed to notify about init in service A");
 
     // Message handling loop.
-    while let Ok(AgentNotification::Message(Ok(message))) = rx.recv() {
+    while let Ok(AgentNotification::Message(Ok(message), _)) = rx.recv() {
         match message {
             // Handle request: Client->A.
             IncomingMessage::Request(req) => {
@@ -190,7 +190,7 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
         .expect("Failed to notify about init in service B");
 
     // Message handling loop.
-    while let Ok(AgentNotification::Message(Ok(message))) = rx.recv() {
+    while let Ok(AgentNotification::Message(Ok(message), _)) = rx.recv() {
         // Handle request.
         match message {
             IncomingMessage::Request(req) => match IncomingRequest::convert::<JsonValue>(req) {
@@ -275,7 +275,7 @@ fn request_chain() {
 
     // Receive response.
     match rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(AgentNotification::Message(Ok(message))) => {
+        Ok(AgentNotification::Message(Ok(message), _)) => {
             match message {
                 IncomingMessage::Response(resp) => {
                     // Handle response.

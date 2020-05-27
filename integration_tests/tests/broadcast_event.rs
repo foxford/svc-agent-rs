@@ -60,7 +60,7 @@ fn broadcast_event() {
 
     // Receive event.
     match rx.recv() {
-        Ok(AgentNotification::Message(Ok(message))) => {
+        Ok(AgentNotification::Message(Ok(message), _)) => {
             match message {
                 IncomingMessage::Event(event) => {
                     // Handle response.

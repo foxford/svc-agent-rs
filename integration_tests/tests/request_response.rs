@@ -68,7 +68,7 @@ fn request_response() {
 
     // Receive response.
     match rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(AgentNotification::Message(Ok(IncomingMessage::Response(response)))) => {
+        Ok(AgentNotification::Message(Ok(IncomingMessage::Response(response)), _)) => {
             // Handle response.
             assert_eq!(response.properties().status(), ResponseStatus::CREATED);
             assert_eq!(response.properties().correlation_data(), CORRELATION_DATA);

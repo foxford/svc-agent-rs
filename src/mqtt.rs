@@ -128,11 +128,11 @@ impl AgentBuilder {
     /// // Message handling loop.
     /// for notification in rx {
     ///     match notification {
-    ///         svc_agent::mqtt::Notification::Publish(message) => {
+    ///         svc_agent::mqtt::AgentNotification::Message(message_result, message_metadata) => {
     ///             println!(
-    ///                 "Incoming message: {} to topic {}",
-    ///                 message.payload.as_slice(),
-    ///                 message.topic_name
+    ///                 "Incoming message: {:?} to topic {}",
+    ///                 message_result,
+    ///                 message_metadata.topic
     ///             );
     ///         }
     ///         _ => ()
@@ -162,7 +162,7 @@ impl AgentBuilder {
                 let msg: AgentNotification = message.into();
                 #[cfg(feature = "queue-counter")]
                 {
-                    if let AgentNotification::Message(Ok(ref content)) = msg {
+                    if let AgentNotification::Message(Ok(ref content), _) = msg {
                         queue_counter_.add_incoming_message(content);
                     };
                 }
@@ -2487,7 +2487,7 @@ use rumqtt::PacketIdentifier;
 
 #[derive(Debug)]
 pub enum AgentNotification {
-    Message(Result<IncomingMessage<String>, String>),
+    Message(Result<IncomingMessage<String>, String>, MessageData),
     Reconnection,
     Disconnection,
     PubAck(PacketIdentifier),
@@ -2498,25 +2498,44 @@ pub enum AgentNotification {
     None,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MessageData {
+    pub dup: bool,
+    pub qos: QoS,
+    pub retain: bool,
+    pub topic: String,
+    pub pkid: Option<PacketIdentifier>,
+}
+
 impl From<Notification> for AgentNotification {
     fn from(notification: Notification) -> Self {
         match notification {
             Notification::Publish(message) => {
-                let payload = message.payload;
-                let env_result = serde_json::from_slice::<compat::IncomingEnvelope>(&payload)
-                    .map_err(|err| format!("Failed to parse incoming envelope: {}", err))
-                    .and_then(|env| match env.properties() {
-                        compat::IncomingEnvelopeProperties::Request(_) => compat::into_request(env)
-                            .map_err(|e| format!("Failed to convert into request: {}", e)),
-                        compat::IncomingEnvelopeProperties::Response(_) => {
-                            compat::into_response(env)
-                                .map_err(|e| format!("Failed to convert into response: {}", e))
-                        }
-                        compat::IncomingEnvelopeProperties::Event(_) => compat::into_event(env)
-                            .map_err(|e| format!("Failed to convert into event: {}", e)),
-                    });
+                let message_data = MessageData {
+                    dup: message.dup,
+                    qos: message.qos,
+                    retain: message.retain,
+                    topic: message.topic_name,
+                    pkid: message.pkid,
+                };
 
-                Self::Message(env_result)
+                let env_result =
+                    serde_json::from_slice::<compat::IncomingEnvelope>(&message.payload)
+                        .map_err(|err| format!("Failed to parse incoming envelope: {}", err))
+                        .and_then(|env| match env.properties() {
+                            compat::IncomingEnvelopeProperties::Request(_) => {
+                                compat::into_request(env)
+                                    .map_err(|e| format!("Failed to convert into request: {}", e))
+                            }
+                            compat::IncomingEnvelopeProperties::Response(_) => {
+                                compat::into_response(env)
+                                    .map_err(|e| format!("Failed to convert into response: {}", e))
+                            }
+                            compat::IncomingEnvelopeProperties::Event(_) => compat::into_event(env)
+                                .map_err(|e| format!("Failed to convert into event: {}", e)),
+                        });
+
+                Self::Message(env_result, message_data)
             }
             Notification::Reconnection => Self::Reconnection,
             Notification::Disconnection => Self::Disconnection,
