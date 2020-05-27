@@ -63,7 +63,7 @@ fn request_dispatcher() {
 
     // ASynchronous message handling loop.
     pool.spawn_ok(async move {
-        while let Ok(AgentNotification::Message(Ok(IncomingMessage::Response(resp)))) = rx.recv() {
+        while let Ok(AgentNotification::Message(Ok(IncomingMessage::Response(resp)), _)) = rx.recv() {
             // Handle response.
             let message =
                 IncomingResponse::convert::<JsonValue>(resp).expect("Couldnt convert message");
