@@ -1463,6 +1463,8 @@ impl<String: std::ops::Deref<Target = str>> IncomingResponse<String> {
 #[derive(Debug, Serialize)]
 pub struct OutgoingEventProperties {
     label: &'static str,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_id: Option<AgentId>,
     #[serde(flatten)]
     long_term_timing: Option<LongTermTimingProperties>,
     #[serde(flatten)]
@@ -1500,7 +1502,13 @@ impl OutgoingEventProperties {
             long_term_timing: None,
             short_term_timing,
             tracking: None,
+            agent_id: None,
         }
+    }
+
+    pub fn set_agent_id(&mut self, agent_id: AgentId) -> &mut Self {
+        self.agent_id = Some(agent_id);
+        self
     }
 
     pub fn set_long_term_timing(&mut self, timing: LongTermTimingProperties) -> &mut Self {
