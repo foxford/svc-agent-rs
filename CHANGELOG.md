@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.1 (May 28, 2020)
+
+### Breaking changes
+
+- Added Publish metadata to `AgentNotification::Message()` enum variant (now its `AgentNotification::Message(message, metadata)`) ([30a068c](https://github.com/netology-group/svc-agent-rs/commit/30a068c84342bf7d5c3dd7613375db241cde2858))
+
+### Features
+
+- Added `set_agent_id(AgentId)` method for `OutgoingEventProperties` ([f43580e](https://github.com/netology-group/svc-agent-rs/commit/f43580ea78a38c5753f3a227d00834b160ccae99))
+
+
 ## v0.13.0 (May 26, 2020)
 
 ### Breaking changes
