@@ -58,6 +58,12 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
         .subscribe(&req_subscription, QoS::AtLeastOnce, Some(&group))
         .expect("Error subscribing to multicast requests in service A");
 
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
+
     // Subscribe to unicast responses topic (from service B).
     let b_service_account_id = AccountId::new("b-service", "test.svc.example.org");
     let resp_subscription = Subscription::unicast_responses_from(&b_service_account_id);
@@ -65,6 +71,12 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
     agent
         .subscribe(&resp_subscription, QoS::AtLeastOnce, None)
         .expect("Error subscribing to unicast responses in service A");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
 
     let response_topic = resp_subscription
         .subscription_topic(&agent_id, A_API_VERSION)
@@ -184,6 +196,12 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
         .subscribe(&subscription, QoS::AtLeastOnce, Some(&group))
         .expect("Error subscribing to multicast requests in service B");
 
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
+
     // Notifying that the service is initialized.
     init_tx
         .send(())
@@ -254,6 +272,12 @@ fn request_chain() {
     agent
         .subscribe(&subscription, QoS::AtLeastOnce, None)
         .expect("Error subscribing to unicast responses");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Suback(_)) => (),
+        Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive suback notification: {}", err),
+    }
 
     // Publish request.
     let response_topic = subscription

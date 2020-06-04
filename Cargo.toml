@@ -25,12 +25,13 @@ serde_derive = "1.0"
 serde_json = "1.0"
 base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
-rumqtt = "0.31"
+rumq-client = "0.1.0-alpha.10"
 http = "0.1"
-svc-authn = "0.5"
+svc-authn = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 futures = "0.3"
 futures-channel = "0.3"
 crossbeam-channel = "0.3"
 log = "0.4"
+tokio = "0.2"
