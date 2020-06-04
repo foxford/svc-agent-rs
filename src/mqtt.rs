@@ -158,60 +158,66 @@ impl AgentBuilder {
         #[cfg(feature = "queue-counter")]
         let queue_counter_ = queue_counter.clone();
 
-        std::thread::spawn(move || {
-            let mut rt = tokio::runtime::Runtime::new().expect("Failed to start tokio runtime");
-            let mut initial_connect = true;
+        std::thread::Builder::new()
+            .name("svc-agent-notifications-loop".to_owned())
+            .spawn(move || {
+                let mut rt = tokio::runtime::Runtime::new().expect("Failed to start tokio runtime");
+                let mut initial_connect = true;
 
-            // Reconnect loop
-            loop {
-                let tx = tx.clone();
-                let connect_fut = eventloop.connect();
-                #[cfg(feature = "queue-counter")]
-                let queue_counter_ = queue_counter_.clone();
+                // Reconnect loop
+                loop {
+                    let tx = tx.clone();
+                    let connect_fut = eventloop.connect();
+                    #[cfg(feature = "queue-counter")]
+                    let queue_counter_ = queue_counter_.clone();
 
-                rt.block_on(async move {
-                    match connect_fut.await {
-                        Err(err) => error!("Error connecting to broker: {}", err),
-                        Ok(mut stream) => {
-                            if initial_connect {
-                                initial_connect = false;
-                            } else if let Err(e) = tx.send(AgentNotification::Reconnection) {
-                                error!("Failed to notify about reconnection: {}", e);
-                            }
-
-                            // Message loop
-                            while let Some(message) = stream.next().await {
-                                if let Notification::Publish(ref content) = message {
-                                    info!("Incoming message = '{:?}'", content);
+                    rt.block_on(async move {
+                        match connect_fut.await {
+                            Err(err) => error!("Error connecting to broker: {}", err),
+                            Ok(mut stream) => {
+                                if initial_connect {
+                                    initial_connect = false;
+                                } else if let Err(e) = tx.send(AgentNotification::Reconnection) {
+                                    error!("Failed to notify about reconnection: {}", e);
                                 }
 
-                                let msg: AgentNotification = message.into();
+                                // Message loop
+                                while let Some(message) = stream.next().await {
+                                    if let Notification::Publish(ref content) = message {
+                                        info!("Incoming message = '{:?}'", content);
+                                    }
 
-                                #[cfg(feature = "queue-counter")]
-                                {
-                                    if let AgentNotification::Message(Ok(ref content), _) = msg {
-                                        queue_counter_.add_incoming_message(content);
+                                    let msg: AgentNotification = message.into();
+
+                                    #[cfg(feature = "queue-counter")]
+                                    {
+                                        if let AgentNotification::Message(Ok(ref content), _) = msg
+                                        {
+                                            queue_counter_.add_incoming_message(content);
+                                        };
+                                    }
+
+                                    if let Err(e) = tx.send(msg) {
+                                        error!("Failed to transmit message, reason = {}", e);
                                     };
                                 }
 
-                                if let Err(e) = tx.send(msg) {
-                                    error!("Failed to transmit message, reason = {}", e);
-                                };
-                            }
-
-                            if let Err(e) = tx.send(AgentNotification::Disconnection) {
-                                error!("Failed to notify about disconnection: {}", e);
+                                if let Err(e) = tx.send(AgentNotification::Disconnection) {
+                                    error!("Failed to notify about disconnection: {}", e);
+                                }
                             }
                         }
-                    }
-                });
+                    });
 
-                match reconnect_interval {
-                    Some(value) => std::thread::sleep(std::time::Duration::from_secs(value)),
-                    None => break,
+                    match reconnect_interval {
+                        Some(value) => std::thread::sleep(std::time::Duration::from_secs(value)),
+                        None => break,
+                    }
                 }
-            }
-        });
+            })
+            .map_err(|e| {
+                Error::new(&format!("Failed starting notifications loop thread, {}", e))
+            })?;
         let agent = Agent::new(
             self.connection.agent_id,
             &self.api_version,
