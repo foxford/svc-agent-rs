@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.14.1 (June 8, 2020)
+
+### Changes
+- MQTT notifications loop thread is now named for ease of debugging ([5ab4e13](https://github.com/netology-group/svc-agent-rs/commit/5ab4e13c010d3e1d5efda22dadd13a1e9717bb91))
+
+### Fixes
+- Updated rumq with git version so it now accounts for max_packet_size option ([b3cef19](https://github.com/netology-group/svc-agent-rs/commit/b3cef19cf320114553d4e20ede7ebd3feb026a20))
+
+## v0.14.0 (June 4, 2020)
+
+### Breaking changes
+- Switch MQTT libraries from rumqtt to rumq ([8c20c3c](https://github.com/netology-group/svc-agent-rs/commit/8c20c3c34e468982458d7efb85a2b154aca0e755))
+
 ## v0.13.1 (May 28, 2020)
 
 ### Breaking changes
