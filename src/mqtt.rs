@@ -1006,8 +1006,6 @@ pub struct TrackingProperties {
     tracking_id: TrackingId,
     #[serde(with = "session_ids_list")]
     session_tracking_label: Vec<SessionId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    local_tracking_label: Option<String>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1024,6 +1022,8 @@ pub struct IncomingEventProperties {
     short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl IncomingEventProperties {
@@ -1045,6 +1045,10 @@ impl IncomingEventProperties {
 
     pub fn tracking(&self) -> &TrackingProperties {
         &self.tracking
+    }
+
+    pub fn local_tracking_label(&self) -> &Option<String> {
+        &self.local_tracking_label
     }
 
     /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html) based on the
@@ -1072,6 +1076,9 @@ impl IncomingEventProperties {
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        if let Some(ref label) = self.local_tracking_label {
+            props.set_local_tracking_label(label.to_owned());
+        }
         props
     }
 
@@ -1112,6 +1119,8 @@ pub struct IncomingRequestProperties {
     short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl IncomingRequestProperties {
@@ -1141,6 +1150,10 @@ impl IncomingRequestProperties {
 
     pub fn tracking(&self) -> &TrackingProperties {
         &self.tracking
+    }
+
+    pub fn local_tracking_label(&self) -> &Option<String> {
+        &self.local_tracking_label
     }
 
     pub fn to_connection(&self) -> Connection {
@@ -1173,6 +1186,9 @@ impl IncomingRequestProperties {
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        if let Some(ref label) = self.local_tracking_label {
+            props.set_local_tracking_label(label.to_owned());
+        }
         props
     }
 
@@ -1215,6 +1231,9 @@ impl IncomingRequestProperties {
 
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        if let Some(ref label) = self.local_tracking_label {
+            props.set_local_tracking_label(label.to_owned());
+        }
         props
     }
 
@@ -1245,6 +1264,7 @@ impl IncomingRequestProperties {
             self.update_long_term_timing(&short_term_timing),
             short_term_timing,
             self.tracking.clone(),
+            self.local_tracking_label.clone(),
         );
 
         props.response_topic = Some(self.response_topic.to_owned());
@@ -1287,6 +1307,8 @@ pub struct IncomingResponseProperties {
     short_term_timing: IncomingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl IncomingResponseProperties {
@@ -1308,6 +1330,10 @@ impl IncomingResponseProperties {
 
     pub fn tracking(&self) -> &TrackingProperties {
         &self.tracking
+    }
+
+    pub fn local_tracking_label(&self) -> &Option<String> {
+        &self.local_tracking_label
     }
 
     pub fn to_connection(&self) -> Connection {
@@ -1517,6 +1543,8 @@ pub struct OutgoingEventProperties {
     short_term_timing: OutgoingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: Option<TrackingProperties>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl OutgoingEventProperties {
@@ -1549,6 +1577,7 @@ impl OutgoingEventProperties {
             short_term_timing,
             tracking: None,
             agent_id: None,
+            local_tracking_label: None,
         }
     }
 
@@ -1564,6 +1593,11 @@ impl OutgoingEventProperties {
 
     pub fn set_tracking(&mut self, tracking: TrackingProperties) -> &mut Self {
         self.tracking = Some(tracking);
+        self
+    }
+
+    pub fn set_local_tracking_label(&mut self, label: String) -> &mut Self {
+        self.local_tracking_label = Some(label);
         self
     }
 }
@@ -1588,6 +1622,8 @@ pub struct OutgoingRequestProperties {
         with = "ts_milliseconds_string_option"
     )]
     local_timestamp: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl OutgoingRequestProperties {
@@ -1629,6 +1665,7 @@ impl OutgoingRequestProperties {
             short_term_timing,
             tracking: None,
             local_timestamp: None,
+            local_tracking_label: None,
         }
     }
 
@@ -1644,6 +1681,11 @@ impl OutgoingRequestProperties {
 
     pub fn set_tracking(&mut self, tracking: TrackingProperties) -> &mut Self {
         self.tracking = Some(tracking);
+        self
+    }
+
+    pub fn set_local_tracking_label(&mut self, local_tracking_label: String) -> &mut Self {
+        self.local_tracking_label = Some(local_tracking_label);
         self
     }
 
@@ -1671,6 +1713,8 @@ pub struct OutgoingResponseProperties {
     short_term_timing: OutgoingShortTermTimingProperties,
     #[serde(flatten)]
     tracking: TrackingProperties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_tracking_label: Option<String>,
 }
 
 impl OutgoingResponseProperties {
@@ -1708,6 +1752,7 @@ impl OutgoingResponseProperties {
         long_term_timing: LongTermTimingProperties,
         short_term_timing: OutgoingShortTermTimingProperties,
         tracking: TrackingProperties,
+        local_tracking_label: Option<String>,
     ) -> Self {
         Self {
             status,
@@ -1716,6 +1761,7 @@ impl OutgoingResponseProperties {
             long_term_timing,
             short_term_timing,
             tracking,
+            local_tracking_label,
         }
     }
 
