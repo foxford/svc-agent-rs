@@ -159,6 +159,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             long_term_timing,
                             short_term_timing,
                             response.properties().tracking().to_owned(),
+                            response.properties().local_tracking_label().to_owned()
                         );
 
                         let response =
