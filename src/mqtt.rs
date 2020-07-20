@@ -171,14 +171,18 @@ impl AgentBuilder {
                     #[cfg(feature = "queue-counter")]
                     let queue_counter_ = queue_counter_.clone();
 
-                    rt.block_on(async move {
+                    rt.block_on(async {
                         match connect_fut.await {
                             Err(err) => error!("Error connecting to broker: {}", err),
                             Ok(mut stream) => {
                                 if initial_connect {
+                                    info!("Doing initial connection");
                                     initial_connect = false;
-                                } else if let Err(e) = tx.send(AgentNotification::Reconnection) {
-                                    error!("Failed to notify about reconnection: {}", e);
+                                } else {
+                                    info!("Was connected before, reconnecting");
+                                    if let Err(e) = tx.send(AgentNotification::Reconnection) {
+                                        error!("Failed to notify about reconnection: {}", e);
+                                    }
                                 }
 
                                 // Message loop
