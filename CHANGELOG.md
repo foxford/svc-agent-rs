@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.2 (July 22, 2020)
+
+### Changes
+- Added `local_tracking_label` setters on outgoing properties ([1bd3f30](https://github.com/netology-group/svc-agent-rs/commit/1bd3f30cac66599bdec1e36c1d24b9f94711be33))
+
+### Fixes
+- Fixed reconnection not sending AgentNotification::Reconnection message ([49b853f](https://github.com/netology-group/svc-agent-rs/commit/49b853f03994903553e97cce8b24362d27014672))
+
+
 ## v0.14.1 (June 8, 2020)
 
 ### Changes
