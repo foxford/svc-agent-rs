@@ -25,8 +25,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
-# 0.1.0-alpha.10 had a bug where max_max_packet_size was ignored
-rumq-client = {git = "https://github.com/tekjar/rumq", rev = "f765dc8"}
+rumq_client = { version = "0.1.0-alpha.11", package = "svc-rumq-client" }
 http = "0.1"
 svc-authn = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
