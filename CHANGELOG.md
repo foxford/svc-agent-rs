@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.3 (July 28, 2020)
+
+### Changes
+- Swapped `rumq_client` with `svc-rumq-client` ([d5649aa](https://github.com/netology-group/svc-agent-rs/commit/d5649aa33f93f23546d653b627fa0dae90b3a479))
+
 ## v0.14.2 (July 22, 2020)
 
 ### Changes
