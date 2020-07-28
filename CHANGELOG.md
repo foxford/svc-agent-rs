@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.2 (July 28, 2020)
+
+### Features
+
+- Exposed `MqttOptions::connection_timeout` setting in `AgentConfig`
+
 ## v0.13.1 (May 28, 2020)
 
 ### Breaking changes

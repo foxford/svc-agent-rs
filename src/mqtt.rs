@@ -33,6 +33,7 @@ use crate::queue_counter::QueueCounterHandle;
 /// * `incoming_message_queue_size` – notification channel capacity. Default: 10.
 /// * `max_message_size` – maximum message size in bytes. Default: 256 * 1024.
 /// * `password` – MQTT broker password.
+/// * `connection_timeout` – TCP connection timeout. Default: 10 seconds
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentConfig {
     uri: String,
@@ -43,6 +44,7 @@ pub struct AgentConfig {
     incoming_message_queue_size: Option<usize>,
     password: Option<String>,
     max_message_size: Option<usize>,
+    connection_timeout: Option<u64>,
 }
 
 impl AgentConfig {
@@ -235,6 +237,10 @@ impl AgentBuilder {
         opts = opts.set_security_opts(rumqtt::SecurityOptions::UsernamePassword(
             username, password,
         ));
+        opts = match config.connection_timeout {
+            Some(value) => opts.set_connection_timeout(value as u16),
+            _ => opts,
+        };
 
         Ok(opts)
     }
