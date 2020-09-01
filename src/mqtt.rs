@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
-use futures_channel::mpsc::UnboundedSender;
-use log::{error, info};
+use futures_channel::mpsc::Sender;
+use log::{debug, error, info};
 use rumq_client::{
     MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback, Subscribe,
 };
@@ -23,6 +23,8 @@ use crate::{
 #[cfg(feature = "queue-counter")]
 use crate::queue_counter::QueueCounterHandle;
 
+const DEFAULT_MQTT_REQUESTS_CHAN_SIZE: Option<usize> = Some(10_000);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Agent configuration.
@@ -38,6 +40,7 @@ use crate::queue_counter::QueueCounterHandle;
 /// * `incoming_message_queue_size` – notification channel capacity. Default: 10.
 /// * `max_message_size` – maximum message size in bytes. Default: 256 * 1024.
 /// * `password` – MQTT broker password.
+/// * `requests_channel_size` - requests channel capacity.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentConfig {
     uri: String,
@@ -48,6 +51,12 @@ pub struct AgentConfig {
     incoming_message_queue_size: Option<usize>,
     password: Option<String>,
     max_message_size: Option<usize>,
+    #[serde(default = "default_mqtt_requests_chan_size")]
+    requests_channel_size: Option<usize>,
+}
+
+fn default_mqtt_requests_chan_size() -> Option<usize> {
+    DEFAULT_MQTT_REQUESTS_CHAN_SIZE
 }
 
 impl AgentConfig {
@@ -149,7 +158,11 @@ impl AgentBuilder {
         config: &AgentConfig,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
-        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::unbounded::<Request>();
+        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::channel::<Request>(
+            config
+                .requests_channel_size
+                .expect("requests_channel_size is not specified"),
+        );
         let mut eventloop = rumq_client::eventloop(options, mqtt_rx);
         let reconnect_interval = config.reconnect_interval.to_owned();
         let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
@@ -189,6 +202,8 @@ impl AgentBuilder {
                                 while let Some(message) = stream.next().await {
                                     if let Notification::Publish(ref content) = message {
                                         info!("Incoming message = '{:?}'", content);
+                                    } else {
+                                        debug!("Incoming item = {:?}", message);
                                     }
 
                                     let msg: AgentNotification = message.into();
@@ -305,7 +320,7 @@ impl Address {
 #[derive(Clone)]
 pub struct Agent {
     address: Address,
-    tx: UnboundedSender<Request>,
+    tx: Sender<Request>,
     #[cfg(feature = "queue-counter")]
     queue_counter: QueueCounterHandle,
 }
@@ -315,7 +330,7 @@ impl Agent {
     fn new(
         id: AgentId,
         api_version: &str,
-        tx: UnboundedSender<Request>,
+        tx: Sender<Request>,
         queue_counter: QueueCounterHandle,
     ) -> Self {
         Self {
@@ -326,7 +341,7 @@ impl Agent {
     }
 
     #[cfg(not(feature = "queue-counter"))]
-    fn new(id: AgentId, api_version: &str, tx: UnboundedSender<Request>) -> Self {
+    fn new(id: AgentId, api_version: &str, tx: Sender<Request>) -> Self {
         Self {
             address: Address::new(id, api_version),
             tx,
@@ -431,9 +446,15 @@ impl Agent {
 
         let publish = Publish::new(dump.topic, dump.qos, dump.payload);
 
-        self.tx
-            .unbounded_send(Request::Publish(publish))
-            .map_err(|e| Error::new(&format!("error publishing MQTT message, {}", &e)))
+        self.tx.try_send(Request::Publish(publish)).map_err(|e| {
+            if e.is_full() {
+                error!(
+                    "Rumq Requests channel reached maximum capacity, no space to publish, {:?}",
+                    &e
+                )
+            }
+            Error::new(&format!("error publishing MQTT message, {}", &e))
+        })
     }
 
     /// Subscribe to a topic.
@@ -477,7 +498,7 @@ impl Agent {
         };
 
         self.tx
-            .unbounded_send(Request::Subscribe(Subscribe::new(topic, qos)))
+            .try_send(Request::Subscribe(Subscribe::new(topic, qos)))
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
