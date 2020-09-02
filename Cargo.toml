@@ -25,7 +25,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 base64 = "0.10"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
-rumq_client = { version = "0.1.0-alpha.11", package = "svc-rumq-client" }
+rumq_client = { version = "0.1.0-alpha.11", package = "svc-rumq-client", git = "https://github.com/netology-group/rumqtt", branch = "send_delay" }
 http = "0.1"
 svc-authn = "0.6"
 chrono = { version = "0.4", features = ["serde"] }

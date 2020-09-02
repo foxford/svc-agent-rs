@@ -158,7 +158,7 @@ impl AgentBuilder {
         config: &AgentConfig,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
-        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::channel::<Request>(
+        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::channel::<(Request, Option<DateTime<Utc>>)>(
             config
                 .requests_channel_size
                 .expect("requests_channel_size is not specified"),
@@ -320,7 +320,7 @@ impl Address {
 #[derive(Clone)]
 pub struct Agent {
     address: Address,
-    tx: Sender<Request>,
+    tx: Sender<(Request, Option<DateTime<Utc>>)>,
     #[cfg(feature = "queue-counter")]
     queue_counter: QueueCounterHandle,
 }
@@ -330,7 +330,7 @@ impl Agent {
     fn new(
         id: AgentId,
         api_version: &str,
-        tx: Sender<Request>,
+        tx: Sender<(Request, Option<DateTime<Utc>>)>,
         queue_counter: QueueCounterHandle,
     ) -> Self {
         Self {
@@ -341,7 +341,7 @@ impl Agent {
     }
 
     #[cfg(not(feature = "queue-counter"))]
-    fn new(id: AgentId, api_version: &str, tx: Sender<Request>) -> Self {
+    fn new(id: AgentId, api_version: &str, tx: Sender<(Request, Option<DateTime<Utc>>)>) -> Self {
         Self {
             address: Address::new(id, api_version),
             tx,
@@ -445,8 +445,9 @@ impl Agent {
         );
 
         let publish = Publish::new(dump.topic, dump.qos, dump.payload);
+        let now = Utc::now();
 
-        self.tx.try_send(Request::Publish(publish)).map_err(|e| {
+        self.tx.try_send((Request::Publish(publish), Some(now))).map_err(|e| {
             if e.is_full() {
                 error!(
                     "Rumq Requests channel reached maximum capacity, no space to publish, {:?}",
@@ -498,7 +499,7 @@ impl Agent {
         };
 
         self.tx
-            .try_send(Request::Subscribe(Subscribe::new(topic, qos)))
+            .try_send((Request::Subscribe(Subscribe::new(topic, qos)), None))
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
