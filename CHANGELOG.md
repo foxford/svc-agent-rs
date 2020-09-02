@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.4 (September 2, 2020)
+
+### Changes
+- Replaced unbounded requests channel with bounded
+
 ## v0.14.3 (July 28, 2020)
 
 ### Changes
