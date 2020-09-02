@@ -6,7 +6,8 @@ use futures::StreamExt;
 use futures_channel::mpsc::Sender;
 use log::{debug, error, info};
 use rumq_client::{
-    MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback, Subscribe,
+    EventLoopError, MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback,
+    Subscribe,
 };
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -2616,7 +2617,7 @@ pub enum AgentNotification {
     Pubcomp(PacketIdentifier),
     Suback(Suback),
     Unsuback(PacketIdentifier),
-    Abort(String),
+    Abort(EventLoopError),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2663,7 +2664,7 @@ impl From<Notification> for AgentNotification {
             Notification::Pubcomp(p) => Self::Pubcomp(p),
             Notification::Suback(s) => Self::Suback(s),
             Notification::Unsuback(p) => Self::Unsuback(p),
-            Notification::Abort(err) => Self::Abort(err.to_string()),
+            Notification::Abort(err) => Self::Abort(err),
         }
     }
 }
