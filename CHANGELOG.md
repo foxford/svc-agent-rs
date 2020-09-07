@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.6 (September 7, 2020)
+
+### Fixes
+- Fix tokio runtime timer ([b718e7c](https://github.com/netology-group/svc-agent-rs/commit/b718e7c31097b1ba52b311f9630f6ea3aa9f0f1f))
+
+
 ## v0.14.5 (September 7, 2020)
 
 ### Features
