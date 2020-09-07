@@ -175,7 +175,19 @@ impl AgentBuilder {
         std::thread::Builder::new()
             .name("svc-agent-notifications-loop".to_owned())
             .spawn(move || {
-                let mut rt = tokio::runtime::Runtime::new().expect("Failed to start tokio runtime");
+                let mut rt_builder = tokio::runtime::Builder::new();
+
+                let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
+                    value
+                        .parse::<usize>()
+                        .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
+                });
+
+                if let Some(value) = thread_count {
+                    rt_builder.threaded_scheduler().core_threads(value);
+                }
+
+                let mut rt = rt_builder.build().expect("Failed to start tokio runtime");
                 let mut initial_connect = true;
 
                 // Reconnect loop
