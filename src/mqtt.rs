@@ -176,6 +176,7 @@ impl AgentBuilder {
             .name("svc-agent-notifications-loop".to_owned())
             .spawn(move || {
                 let mut rt_builder = tokio::runtime::Builder::new();
+                rt_builder.enable_all();
 
                 let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
                     value
