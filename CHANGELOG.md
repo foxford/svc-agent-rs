@@ -1,14 +1,23 @@
 # Changelog
 
+## v0.14.5 (September 7, 2020)
+
+### Features
+- Pass EventLoopError to AgentNotification::Abort ([c09c0d4](https://github.com/netology-group/svc-agent-rs/commit/c09c0d4e38e2b80ad33368800ff82e208b3a1784))
+- Add TOKIO_THREAD_COUNT env setting ([2ac6f63](https://github.com/netology-group/svc-agent-rs/commit/2ac6f63b4188fde9cd35c10adbf58859a5e257cf))
+
+
 ## v0.14.4 (September 2, 2020)
 
 ### Changes
-- Replaced unbounded requests channel with bounded
+- Replaced unbounded requests channel with bounded ([cfe30a8](https://github.com/netology-group/svc-agent-rs/commit/cfe30a8222bc0d93b2225595d4fe10e315f78c9b))
+
 
 ## v0.14.3 (July 28, 2020)
 
 ### Changes
 - Swapped `rumq_client` with `svc-rumq-client` ([d5649aa](https://github.com/netology-group/svc-agent-rs/commit/d5649aa33f93f23546d653b627fa0dae90b3a479))
+
 
 ## v0.14.2 (July 22, 2020)
 
@@ -27,10 +36,12 @@
 ### Fixes
 - Updated rumq with git version so it now accounts for max_packet_size option ([b3cef19](https://github.com/netology-group/svc-agent-rs/commit/b3cef19cf320114553d4e20ede7ebd3feb026a20))
 
+
 ## v0.14.0 (June 4, 2020)
 
 ### Breaking changes
 - Switch MQTT libraries from rumqtt to rumq ([8c20c3c](https://github.com/netology-group/svc-agent-rs/commit/8c20c3c34e468982458d7efb85a2b154aca0e755))
+
 
 ## v0.13.1 (May 28, 2020)
 
@@ -53,16 +64,19 @@
 
 - Added queue-counter feature ([d17357e](https://github.com/netology-group/svc-agent-rs/commit/d17357e494b0901d8f659aa8c836a850756c5771))
 
+
 ## v0.12.1 (April 24, 2020)
 
 ### Features
 
 - Multicast events ([d70d3963](https://github.com/netology-group/svc-agent-rs/commit/d70d3963f3b19be9aa83b02e258e743fa59a37da) and [fae57b9](https://github.com/netology-group/svc-agent-rs/commit/fae57b9464ceea5f48f1efc60ce4f5760eb25803))
 
+
 ## v0.12.0 (April 21, 2020)
 
 ### Breaking changes
 - Changed default value of AgentConfig::reconnect_interval from 10 seconds to never reconnect ([f02869f](https://github.com/netology-group/svc-agent-rs/commit/f02869f3f7cdd44074203715f232684a57d691b7))
+
 
 ## v0.11.4 (April 17, 2020)
 
