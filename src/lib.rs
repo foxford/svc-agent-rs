@@ -59,8 +59,58 @@ pub trait Addressable: Authenticable {
 #[cfg_attr(feature = "diesel", derive(FromSqlRow, AsExpression))]
 #[cfg_attr(feature = "diesel", sql_type = "sql::Agent_id")]
 pub struct AgentId {
-    label: String,
     account_id: AccountId,
+    label: String,
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::encode::Encode<'_, sqlx::Postgres> for AgentId
+where
+    AccountId: for<'q> sqlx::encode::Encode<'q, sqlx::Postgres>,
+    AccountId: sqlx::types::Type<sqlx::Postgres>,
+    String: for<'q> sqlx::encode::Encode<'q, sqlx::Postgres>,
+    String: sqlx::types::Type<sqlx::Postgres>,
+{
+    fn encode_by_ref(&self, buf: &mut sqlx::postgres::PgArgumentBuffer) -> sqlx::encode::IsNull {
+        let mut encoder = sqlx::postgres::types::PgRecordEncoder::new(buf);
+        encoder.encode(&self.account_id);
+        encoder.encode(&self.label);
+        encoder.finish();
+        sqlx::encode::IsNull::No
+    }
+    fn size_hint(&self) -> usize {
+        2usize * (4 + 4)
+            + <AccountId as sqlx::encode::Encode<sqlx::Postgres>>::size_hint(&self.account_id)
+            + <String as sqlx::encode::Encode<sqlx::Postgres>>::size_hint(&self.label)
+    }
+}
+
+// This is what `derive(sqlx::Type)` expands to but with fixed lifetime.
+// https://github.com/launchbadge/sqlx/issues/672
+#[cfg(feature = "sqlx")]
+impl<'r> sqlx::decode::Decode<'r, sqlx::Postgres> for AgentId
+where
+    // Originally it was `AccountId: sqlx::decode::Decode<'r, sqlx::Postgres>,`
+    AccountId: for<'q> sqlx::decode::Decode<'q, sqlx::Postgres>,
+    AccountId: sqlx::types::Type<sqlx::Postgres>,
+    String: sqlx::decode::Decode<'r, sqlx::Postgres>,
+    String: sqlx::types::Type<sqlx::Postgres>,
+{
+    fn decode(
+        value: sqlx::postgres::PgValueRef<'r>,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+        let mut decoder = sqlx::postgres::types::PgRecordDecoder::new(value)?;
+        let account_id = decoder.try_decode::<AccountId>()?;
+        let label = decoder.try_decode::<String>()?;
+        Ok(AgentId { account_id, label })
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Type<sqlx::Postgres> for AgentId {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        sqlx::postgres::PgTypeInfo::with_name("agent_id")
+    }
 }
 
 impl AgentId {
