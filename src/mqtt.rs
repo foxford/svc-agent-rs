@@ -158,6 +158,28 @@ impl AgentBuilder {
         self,
         config: &AgentConfig,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
+        let mut rt_builder = tokio::runtime::Builder::new();
+        rt_builder.enable_all();
+
+        let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
+            value
+                .parse::<usize>()
+                .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
+        });
+
+        if let Some(value) = thread_count {
+            rt_builder.threaded_scheduler().core_threads(value);
+        }
+
+        let rt = rt_builder.build().expect("Failed to start tokio runtime");
+        self.start_with_runtime(config, rt.handle().clone())
+    }
+
+    pub fn start_with_runtime(
+        self,
+        config: &AgentConfig,
+        rt_handle: tokio::runtime::Handle,
+    ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
         let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::channel::<Request>(
             config
@@ -175,20 +197,6 @@ impl AgentBuilder {
         std::thread::Builder::new()
             .name("svc-agent-notifications-loop".to_owned())
             .spawn(move || {
-                let mut rt_builder = tokio::runtime::Builder::new();
-                rt_builder.enable_all();
-
-                let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
-                    value
-                        .parse::<usize>()
-                        .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
-                });
-
-                if let Some(value) = thread_count {
-                    rt_builder.threaded_scheduler().core_threads(value);
-                }
-
-                let mut rt = rt_builder.build().expect("Failed to start tokio runtime");
                 let mut initial_connect = true;
 
                 // Reconnect loop
@@ -198,9 +206,9 @@ impl AgentBuilder {
                     #[cfg(feature = "queue-counter")]
                     let queue_counter_ = queue_counter_.clone();
 
-                    rt.block_on(async {
+                    rt_handle.block_on(async {
                         match connect_fut.await {
-                            Err(err) => error!("Error connecting to broker: {}", err),
+                            Err(err) => error!("Error connecting to broker: {:?}", err),
                             Ok(mut stream) => {
                                 if initial_connect {
                                     info!("Doing initial connection");
