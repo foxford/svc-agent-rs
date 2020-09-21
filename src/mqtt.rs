@@ -30,7 +30,7 @@ const DEFAULT_MQTT_REQUESTS_CHAN_SIZE: Option<usize> = Some(10_000);
 lazy_static! {
     static ref TOKIO: tokio::runtime::Runtime = {
         let mut rt_builder = tokio::runtime::Builder::new();
-        rt_builder.enable_all();
+        rt_builder.enable_all().threaded_scheduler();
 
         let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
             value
@@ -39,7 +39,7 @@ lazy_static! {
         });
 
         if let Some(value) = thread_count {
-            rt_builder.threaded_scheduler().core_threads(value);
+            rt_builder.core_threads(value);
         }
 
         rt_builder.build().expect("Failed to start tokio runtime")
