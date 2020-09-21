@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.8 (September 22, 2020)
+
+### Fixes
+- Fix tokio runtime dropping too soon (fixes 4b9d630) ([acc943c](https://github.com/netology-group/svc-agent-rs/commit/acc943c76bd9bf9030f7956b0d0ff385c80e5bfe))
+
 ## v0.14.7 (September 21, 2020)
 
 ### Features
