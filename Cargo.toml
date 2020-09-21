@@ -36,3 +36,4 @@ futures-channel = "0.3"
 crossbeam-channel = "0.3"
 log = "0.4"
 tokio = { version = "0.2", features = ["rt-threaded", "io-driver", "time"] }
+lazy_static = "1.4.0"

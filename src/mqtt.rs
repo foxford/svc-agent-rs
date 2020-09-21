@@ -4,6 +4,7 @@ use std::str::FromStr;
 use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
 use futures_channel::mpsc::Sender;
+use lazy_static::lazy_static;
 use log::{debug, error, info};
 use rumq_client::{
     EventLoopError, MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback,
@@ -25,6 +26,25 @@ use crate::{
 use crate::queue_counter::QueueCounterHandle;
 
 const DEFAULT_MQTT_REQUESTS_CHAN_SIZE: Option<usize> = Some(10_000);
+
+lazy_static! {
+    static ref TOKIO: tokio::runtime::Runtime = {
+        let mut rt_builder = tokio::runtime::Builder::new();
+        rt_builder.enable_all();
+
+        let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
+            value
+                .parse::<usize>()
+                .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
+        });
+
+        if let Some(value) = thread_count {
+            rt_builder.threaded_scheduler().core_threads(value);
+        }
+
+        rt_builder.build().expect("Failed to start tokio runtime")
+    };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -158,21 +178,7 @@ impl AgentBuilder {
         self,
         config: &AgentConfig,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
-        let mut rt_builder = tokio::runtime::Builder::new();
-        rt_builder.enable_all();
-
-        let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
-            value
-                .parse::<usize>()
-                .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
-        });
-
-        if let Some(value) = thread_count {
-            rt_builder.threaded_scheduler().core_threads(value);
-        }
-
-        let rt = rt_builder.build().expect("Failed to start tokio runtime");
-        self.start_with_runtime(config, rt.handle().clone())
+        self.start_with_runtime(config, TOKIO.handle().clone())
     }
 
     pub fn start_with_runtime(
