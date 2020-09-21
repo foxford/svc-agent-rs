@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.9 (September 22, 2020)
+
+### Fixes
+- Always use tokio threaded scheduler ([3202574](https://github.com/netology-group/svc-agent-rs/commit/3202574ec3bffd25fbc1df07a428506f86e1bedc))
+
 ## v0.14.8 (September 22, 2020)
 
 ### Fixes
