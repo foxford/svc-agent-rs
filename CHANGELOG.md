@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.7 (September 21, 2020)
+
+### Features
+- Allow starting Agent with already existing runtime ([4b9d630](https://github.com/netology-group/svc-agent-rs/commit/4b9d6302e4f9cabb6cf6c58dd8cf528b664cd4dd))
+- Add sqlx support ([ff01a0e](https://github.com/netology-group/svc-agent-rs/commit/ff01a0eb752dcc649f97678ed0b750c484ff7e63))
+
+
 ## v0.14.6 (September 7, 2020)
 
 ### Fixes
