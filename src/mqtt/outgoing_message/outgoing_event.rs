@@ -19,6 +19,8 @@ pub struct OutgoingEventProperties {
     tracking: Option<TrackingProperties>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(skip)]
+    tags: ExtraTags,
 }
 
 impl OutgoingEventProperties {
@@ -52,6 +54,7 @@ impl OutgoingEventProperties {
             tracking: None,
             agent_id: None,
             local_tracking_label: None,
+            tags: Default::default(),
         }
     }
 
@@ -72,6 +75,15 @@ impl OutgoingEventProperties {
 
     pub fn set_local_tracking_label(&mut self, label: String) -> &mut Self {
         self.local_tracking_label = Some(label);
+        self
+    }
+
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
+    }
+
+    pub fn set_tags(&mut self, tags: ExtraTags) -> &mut Self {
+        self.tags = tags;
         self
     }
 }

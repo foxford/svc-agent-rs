@@ -1,24 +1,31 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use chrono::{DateTime, Utc};
 use crossbeam_channel::{Receiver, Sender};
 use log::error;
 
+use crate::mqtt::ExtraTags;
 use crate::mqtt::{IncomingMessage, PublishableMessage};
 
 const QUEUE_TIMELIMIT: i64 = 30;
 
-struct QueueCounter {
-    cmd_rx: Receiver<TimestampedCommand>,
-    incoming_requests: VecDeque<DateTime<Utc>>,
-    incoming_responses: VecDeque<DateTime<Utc>>,
-    incoming_events: VecDeque<DateTime<Utc>>,
-    outgoing_requests: VecDeque<DateTime<Utc>>,
-    outgoing_responses: VecDeque<DateTime<Utc>>,
-    outgoing_events: VecDeque<DateTime<Utc>>,
+// Tagged point in time when message got into Agent
+struct MessageDatapoint {
+    dt: DateTime<Utc>,
+    tags: ExtraTags,
 }
 
-#[derive(Debug)]
+struct QueueCounter {
+    cmd_rx: Receiver<TimestampedCommand>,
+    incoming_requests: VecDeque<MessageDatapoint>,
+    incoming_responses: VecDeque<MessageDatapoint>,
+    incoming_events: VecDeque<MessageDatapoint>,
+    outgoing_requests: VecDeque<MessageDatapoint>,
+    outgoing_responses: VecDeque<MessageDatapoint>,
+    outgoing_events: VecDeque<MessageDatapoint>,
+}
+
+#[derive(Debug, Default)]
 pub struct QueuesCounterResult {
     pub incoming_requests: u64,
     pub incoming_responses: u64,
@@ -30,13 +37,16 @@ pub struct QueuesCounterResult {
 
 #[derive(Debug)]
 enum Command {
-    IncomingRequest,
-    IncomingResponse,
-    IncomingEvent,
-    OutgoingRequest,
-    OutgoingResponse,
-    OutgoingEvent,
-    GetThroughput(u64, crossbeam_channel::Sender<QueuesCounterResult>),
+    IncomingRequest(ExtraTags),
+    IncomingResponse(ExtraTags),
+    IncomingEvent(ExtraTags),
+    OutgoingRequest(ExtraTags),
+    OutgoingResponse(ExtraTags),
+    OutgoingEvent(ExtraTags),
+    GetThroughput(
+        u64,
+        crossbeam_channel::Sender<HashMap<ExtraTags, QueuesCounterResult>>,
+    ),
 }
 
 struct TimestampedCommand {
@@ -63,17 +73,31 @@ impl QueueCounterHandle {
             outgoing_events: VecDeque::with_capacity(100),
         };
 
-        std::thread::spawn(move || {
-            counter.start_loop();
-        });
+        let builder = std::thread::Builder::new().name("qc-command-loop".into());
+        builder
+            .spawn(move || {
+                counter.start_loop();
+            })
+            .expect("Failed to start qc-command-loop thread");
         Self { cmd_tx }
     }
 
     pub(crate) fn add_incoming_message<T>(&self, msg: &IncomingMessage<T>) {
         let command = match msg {
-            IncomingMessage::Event(_) => Command::IncomingEvent,
-            IncomingMessage::Request(_) => Command::IncomingRequest,
-            IncomingMessage::Response(_) => Command::IncomingResponse,
+            IncomingMessage::Event(ev) => {
+                let tags = ev.properties().tags().to_owned();
+                Command::IncomingEvent(tags)
+            }
+            IncomingMessage::Request(req) => {
+                let method = req.properties().method().to_owned();
+                let mut tags = req.properties().tags().to_owned();
+                tags.set_method(&method);
+                Command::IncomingRequest(tags)
+            }
+            IncomingMessage::Response(resp) => {
+                let tags = resp.properties().tags().to_owned();
+                Command::IncomingResponse(tags)
+            }
         };
 
         self.send_command(command);
@@ -81,9 +105,18 @@ impl QueueCounterHandle {
 
     pub(crate) fn add_outgoing_message(&self, dump: &PublishableMessage) {
         let command = match dump {
-            PublishableMessage::Event(_) => Command::OutgoingEvent,
-            PublishableMessage::Request(_) => Command::OutgoingRequest,
-            PublishableMessage::Response(_) => Command::OutgoingResponse,
+            PublishableMessage::Event(ev) => {
+                let tags = ev.tags().to_owned();
+                Command::OutgoingEvent(tags)
+            }
+            PublishableMessage::Request(req) => {
+                let tags = req.tags().to_owned();
+                Command::OutgoingRequest(tags)
+            }
+            PublishableMessage::Response(resp) => {
+                let tags = resp.tags().to_owned();
+                Command::OutgoingResponse(tags)
+            }
         };
         self.send_command(command);
     }
@@ -97,15 +130,18 @@ impl QueueCounterHandle {
         }
     }
 
-    pub fn get_stats(&self, seconds: u64) -> Result<QueuesCounterResult, String> {
-        let (resp_tx, resp_rx) = crossbeam_channel::bounded::<QueuesCounterResult>(1);
+    pub fn get_stats(
+        &self,
+        seconds: u64,
+    ) -> Result<HashMap<ExtraTags, QueuesCounterResult>, String> {
+        let (resp_tx, resp_rx) = crossbeam_channel::bounded::<_>(1);
         let command = Command::GetThroughput(seconds, resp_tx);
 
         self.send_command(command);
 
         resp_rx
             .recv()
-            .map_err(|e| format!("get_stats went wrong: {}", e))
+            .map_err(|e| format!("get_stats went wrong: {:?}", e))
     }
 }
 
@@ -120,35 +156,51 @@ impl QueueCounter {
                         c.timestamp - chrono::Duration::seconds(secs as i64),
                     );
 
-                    let r = QueuesCounterResult {
-                        incoming_requests: self.incoming_requests.len() as u64,
-                        incoming_responses: self.incoming_responses.len() as u64,
-                        incoming_events: self.incoming_events.len() as u64,
-                        outgoing_requests: self.outgoing_requests.len() as u64,
-                        outgoing_responses: self.outgoing_responses.len() as u64,
-                        outgoing_events: self.outgoing_events.len() as u64,
-                    };
-                    if resp_tx.send(r).is_err() {
+                    if resp_tx.send(self.fold()).is_err() {
                         error!("The receiving end was dropped before this was called");
                     }
                 }
-                Command::IncomingRequest => {
-                    self.incoming_requests.push_back(c.timestamp);
+                Command::IncomingRequest(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.incoming_requests.push_back(p);
                 }
-                Command::IncomingResponse => {
-                    self.incoming_responses.push_back(c.timestamp);
+                Command::IncomingResponse(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.incoming_responses.push_back(p);
                 }
-                Command::IncomingEvent => {
-                    self.incoming_responses.push_back(c.timestamp);
+                Command::IncomingEvent(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.incoming_responses.push_back(p);
                 }
-                Command::OutgoingRequest => {
-                    self.outgoing_requests.push_back(c.timestamp);
+                Command::OutgoingRequest(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.outgoing_requests.push_back(p);
                 }
-                Command::OutgoingResponse => {
-                    self.outgoing_responses.push_back(c.timestamp);
+                Command::OutgoingResponse(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.outgoing_responses.push_back(p);
                 }
-                Command::OutgoingEvent => {
-                    self.outgoing_responses.push_back(c.timestamp);
+                Command::OutgoingEvent(tags) => {
+                    let p = MessageDatapoint {
+                        dt: c.timestamp,
+                        tags: tags,
+                    };
+                    self.outgoing_responses.push_back(p);
                 }
             }
         }
@@ -164,17 +216,71 @@ impl QueueCounter {
     }
 
     fn clear_outdated_entries_from_queue(
-        queue: &mut VecDeque<DateTime<Utc>>,
+        queue: &mut VecDeque<MessageDatapoint>,
         timestamp: DateTime<Utc>,
     ) {
         loop {
             if let Some(v) = queue.front() {
-                if *v < timestamp {
+                if v.dt < timestamp {
                     queue.pop_front();
                     continue;
                 }
             }
             break;
         }
+    }
+
+    fn fold(&self) -> HashMap<ExtraTags, QueuesCounterResult> {
+        let mut hashmap = HashMap::new();
+
+        self.incoming_events.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().incoming_events += 1;
+            acc
+        });
+
+        self.incoming_requests.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().incoming_requests += 1;
+            acc
+        });
+
+        self.incoming_responses.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().incoming_responses += 1;
+            acc
+        });
+
+        self.outgoing_events.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().outgoing_events += 1;
+            acc
+        });
+
+        self.outgoing_requests.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().outgoing_requests += 1;
+            acc
+        });
+
+        self.outgoing_responses.iter().fold(&mut hashmap, |acc, x| {
+            if !acc.contains_key(&x.tags) {
+                acc.insert(x.tags.clone(), QueuesCounterResult::default());
+            }
+            acc.get_mut(&x.tags).unwrap().outgoing_responses += 1;
+            acc
+        });
+
+        hashmap
     }
 }

@@ -226,14 +226,17 @@ impl AgentBuilder {
                                         debug!("Incoming item = {:?}", message);
                                     }
 
-                                    let msg: AgentNotification = message.into();
+                                    let mut msg: AgentNotification = message.into();
 
-                                    #[cfg(feature = "queue-counter")]
+                                    if let AgentNotification::Message(Ok(ref mut content), _) = msg
                                     {
-                                        if let AgentNotification::Message(Ok(ref content), _) = msg
-                                        {
-                                            queue_counter_.add_incoming_message(content);
-                                        };
+                                        if let IncomingMessage::Request(req) = content {
+                                            let method = req.properties().method().to_owned();
+                                            req.properties_mut().set_method(&method);
+                                        }
+
+                                        #[cfg(feature = "queue-counter")]
+                                        queue_counter_.add_incoming_message(content);
                                     }
 
                                     if let Err(e) = tx.send(msg) {

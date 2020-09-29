@@ -1,6 +1,5 @@
-use serde_derive::{Deserialize, Serialize};
-
 use super::super::*;
+use crate::mqtt::ExtraTags;
 use crate::{AccountId, Addressable, AgentId, Authenticable};
 
 /// Properties of an incoming request.
@@ -20,6 +19,8 @@ pub struct IncomingRequestProperties {
     tracking: TrackingProperties,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(flatten)]
+    tags: ExtraTags,
 }
 
 impl IncomingRequestProperties {
@@ -59,6 +60,14 @@ impl IncomingRequestProperties {
         self.conn.to_connection()
     }
 
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
+    }
+
+    pub fn set_method(&mut self, method: &str) {
+        self.tags.set_method(method);
+    }
+
     /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html) based on the
     /// [IncomingRequestProperties](struct.IncomingRequestProperties.html).
     ///
@@ -83,8 +92,11 @@ impl IncomingRequestProperties {
     ) -> OutgoingEventProperties {
         let long_term_timing = self.update_long_term_timing(&short_term_timing);
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
+
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        props.set_tags(self.tags.clone());
+
         if let Some(ref label) = self.local_tracking_label {
             props.set_local_tracking_label(label.to_owned());
         }
@@ -130,6 +142,8 @@ impl IncomingRequestProperties {
 
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        props.set_tags(self.tags.clone());
+
         if let Some(ref label) = self.local_tracking_label {
             props.set_local_tracking_label(label.to_owned());
         }
@@ -167,6 +181,8 @@ impl IncomingRequestProperties {
         );
 
         props.set_response_topic(&self.response_topic);
+        props.set_tags(self.tags.clone());
+
         props
     }
 

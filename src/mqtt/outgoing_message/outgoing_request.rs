@@ -30,6 +30,8 @@ pub struct OutgoingRequestProperties {
     local_timestamp: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(skip)]
+    tags: ExtraTags,
 }
 
 impl OutgoingRequestProperties {
@@ -72,6 +74,7 @@ impl OutgoingRequestProperties {
             tracking: None,
             local_timestamp: None,
             local_tracking_label: None,
+            tags: Default::default(),
         }
     }
 
@@ -102,6 +105,15 @@ impl OutgoingRequestProperties {
 
     pub fn correlation_data(&self) -> &str {
         &self.correlation_data
+    }
+
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
+    }
+
+    pub fn set_tags(&mut self, tags: ExtraTags) -> &mut Self {
+        self.tags = tags;
+        self
     }
 }
 

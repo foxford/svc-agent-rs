@@ -25,6 +25,7 @@ pub struct PublishableDump {
     topic: String,
     qos: QoS,
     payload: String,
+    tags: ExtraTags,
 }
 
 impl PublishableDump {
@@ -38,6 +39,10 @@ impl PublishableDump {
 
     pub fn payload(&self) -> &str {
         &self.payload
+    }
+
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
     }
 }
 
@@ -71,6 +76,14 @@ impl PublishableMessage {
             Self::Response(v) => v.payload(),
         }
     }
+
+    pub fn tags(&self) -> &ExtraTags {
+        match self {
+            Self::Event(v) => v.tags(),
+            Self::Request(v) => v.tags(),
+            Self::Response(v) => v.tags(),
+        }
+    }
 }
 
 pub trait IntoPublishableMessage {
@@ -84,6 +97,7 @@ impl<T: serde::Serialize> IntoPublishableMessage for OutgoingMessage<T> {
 
         let topic = self.destination_topic(&publisher)?;
         let qos = self.qos();
+        let tags = self.tags().to_owned();
 
         let envelope = &self.into_envelope()?;
         let payload = serde_json::to_string(envelope)
@@ -93,6 +107,7 @@ impl<T: serde::Serialize> IntoPublishableMessage for OutgoingMessage<T> {
             topic,
             qos,
             payload,
+            tags,
         };
 
         let message = match envelope.properties {
