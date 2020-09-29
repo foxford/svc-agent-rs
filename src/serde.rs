@@ -3,7 +3,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    mqtt::{Connection, ConnectionMode, TrackingId},
+    mqtt::agent::{Connection, ConnectionMode},
+    mqtt::TrackingId,
     AgentId, SharedGroup,
 };
 
