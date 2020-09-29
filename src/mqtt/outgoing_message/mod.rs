@@ -42,6 +42,16 @@ where
     }
 }
 
+impl<T: serde::Serialize> OutgoingMessage<T> {
+    pub(crate) fn tags(&self) -> &ExtraTags {
+        match self {
+            OutgoingMessage::Event(v) => v.properties().tags(),
+            OutgoingMessage::Response(v) => v.properties().tags(),
+            OutgoingMessage::Request(v) => v.properties().tags(),
+        }
+    }
+}
+
 impl<T: serde::Serialize> Publishable for OutgoingMessage<T> {
     fn destination_topic(&self, publisher: &Address) -> Result<String, Error> {
         match self {

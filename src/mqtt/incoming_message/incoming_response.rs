@@ -19,6 +19,8 @@ pub struct IncomingResponseProperties {
     tracking: TrackingProperties,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(flatten)]
+    tags: ExtraTags,
 }
 
 impl IncomingResponseProperties {
@@ -48,6 +50,10 @@ impl IncomingResponseProperties {
 
     pub fn to_connection(&self) -> Connection {
         self.conn.to_connection()
+    }
+
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
     }
 }
 

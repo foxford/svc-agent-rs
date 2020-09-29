@@ -1,7 +1,3 @@
-pub use incoming_event::*;
-pub use incoming_request::*;
-pub use incoming_response::*;
-
 use super::*;
 
 /// A generic received message.
@@ -43,7 +39,15 @@ where
     pub fn properties(&self) -> &P {
         &self.properties
     }
+
+    pub fn properties_mut(&mut self) -> &mut P {
+        &mut self.properties
+    }
 }
+
+pub use incoming_event::*;
+pub use incoming_request::*;
+pub use incoming_response::*;
 
 mod incoming_event;
 mod incoming_request;

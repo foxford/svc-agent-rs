@@ -1,3 +1,5 @@
+use serde_derive::{Deserialize, Serialize};
+
 use crate::{
     Addressable, Authenticable, Destination, Error, EventSubscription, RequestSubscription,
     ResponseSubscription, Source,
@@ -116,6 +118,22 @@ impl<'a> SubscriptionTopic for ResponseSubscription<'a> {
                 self.source,
             ))),
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Hash, Eq, PartialEq)]
+pub struct ExtraTags {
+    app_label: Option<String>,
+    app_version: Option<String>,
+    app_audience: Option<String>,
+    scope: Option<String>,
+    #[serde(skip_deserializing)]
+    request_method: Option<String>,
+}
+
+impl ExtraTags {
+    pub fn set_method(&mut self, method: &str) {
+        self.request_method = Some(method.to_owned());
     }
 }
 

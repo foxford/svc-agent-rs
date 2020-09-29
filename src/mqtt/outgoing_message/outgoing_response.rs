@@ -19,6 +19,8 @@ pub struct OutgoingResponseProperties {
     tracking: TrackingProperties,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(skip)]
+    tags: ExtraTags,
 }
 
 impl OutgoingResponseProperties {
@@ -66,6 +68,7 @@ impl OutgoingResponseProperties {
             short_term_timing,
             tracking,
             local_tracking_label,
+            tags: Default::default(),
         }
     }
 
@@ -75,6 +78,15 @@ impl OutgoingResponseProperties {
 
     pub(crate) fn set_response_topic(&mut self, response_topic: &str) {
         self.response_topic = Some(response_topic.to_owned());
+    }
+
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
+    }
+
+    pub fn set_tags(&mut self, tags: ExtraTags) -> &mut Self {
+        self.tags = tags;
+        self
     }
 }
 

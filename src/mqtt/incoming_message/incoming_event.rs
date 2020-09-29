@@ -17,6 +17,8 @@ pub struct IncomingEventProperties {
     tracking: TrackingProperties,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_tracking_label: Option<String>,
+    #[serde(flatten)]
+    tags: ExtraTags,
 }
 
 impl IncomingEventProperties {
@@ -44,6 +46,10 @@ impl IncomingEventProperties {
         &self.local_tracking_label
     }
 
+    pub fn tags(&self) -> &ExtraTags {
+        &self.tags
+    }
+
     /// Builds [OutgoingEventProperties](struct.OutgoingEventProperties.html) based on the
     /// [IncomingEventProperties](struct.IncomingEventProperties.html).
     ///
@@ -69,6 +75,7 @@ impl IncomingEventProperties {
         let mut props = OutgoingEventProperties::new(label, short_term_timing);
         props.set_long_term_timing(long_term_timing);
         props.set_tracking(self.tracking.clone());
+        props.set_tags(self.tags.clone());
         if let Some(ref label) = self.local_tracking_label {
             props.set_local_tracking_label(label.to_owned());
         }
