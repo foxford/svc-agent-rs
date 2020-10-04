@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.10 (October 5, 2020)
+
+### Changes
+- Added metric tags parsed from mqtt user properties ([f3582ec](https://github.com/netology-group/svc-agent-rs/commit/f3582ecb1a4d5fc7983af844e10ad7d74c626f98))
+
+
 ## v0.14.9 (September 22, 2020)
 
 ### Fixes
