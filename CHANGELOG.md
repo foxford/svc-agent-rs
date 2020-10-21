@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.11 (October 22, 2020)
+
+### Fixes
+- Fixed events aggregation in wrong queues in queue counter ([4fd2842](https://github.com/netology-group/svc-agent-rs/commit/4fd284242e1ade4275d1395d01b0683d5de0d2c5))
+- Changed counters behaviour from counter over time window to monotonically increasing counter ([9c90f4c](https://github.com/netology-group/svc-agent-rs/commit/9c90f4ce18ae2df7e128838552895ffa465ecd40))
+
+
 ## v0.14.10 (October 5, 2020)
 
 ### Changes
