@@ -10,6 +10,7 @@ use crate::mqtt::{IncomingMessage, PublishableMessage};
 const QUEUE_TIMELIMIT: i64 = 30;
 
 // Tagged point in time when message got into Agent
+#[derive(Debug)]
 struct MessageDatapoint {
     dt: DateTime<Utc>,
     tags: ExtraTags,
@@ -49,6 +50,7 @@ enum Command {
     ),
 }
 
+#[derive(Debug)]
 struct TimestampedCommand {
     command: Command,
     timestamp: DateTime<Utc>,
@@ -179,7 +181,7 @@ impl QueueCounter {
                         dt: c.timestamp,
                         tags: tags,
                     };
-                    self.incoming_responses.push_back(p);
+                    self.incoming_events.push_back(p);
                 }
                 Command::OutgoingRequest(tags) => {
                     let p = MessageDatapoint {
@@ -200,7 +202,7 @@ impl QueueCounter {
                         dt: c.timestamp,
                         tags: tags,
                     };
-                    self.outgoing_responses.push_back(p);
+                    self.outgoing_events.push_back(p);
                 }
             }
         }
