@@ -137,13 +137,13 @@ where
     /// # Example
     ///
     /// ```
-    /// let props = OutgoingEvent::multicast(
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
+    ///
+    /// let message = OutgoingRequest::multicast(
     ///     json!({ "foo": "bar" }),
     ///     request.to_event("message.create", short_term_timing),
-    ///     ,
+    ///     &AccountId::new("service_name", "svc.example.org"),
     /// );
-    /// let to = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"))
-    /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props, &to);
     /// ```
     pub fn multicast<A>(
         payload: T,
@@ -157,6 +157,43 @@ where
             payload,
             properties,
             Destination::Multicast(to.as_account_id().to_owned()),
+        ))
+    }
+
+    /// Builds a unicast event to publish.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` – any serializable value.
+    /// * `properties` – properties of the outgoing event.
+    /// * `to` – destination [AgentId](../struct.AgentId.html).
+    /// * `version` – destination agent's API version.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let short_term_timing = OutgoingShortTermTimingProperties::until_now(start_timestamp);
+    ///
+    /// let message = OutgoingRequest::multicast(
+    ///     json!({ "foo": "bar" }),
+    ///     request.to_event("message.create", short_term_timing),
+    ///     &AgentId::new("instance01", AccountId::new("service_name", "svc.example.org")),
+    ///     "v1",
+    /// );
+    /// ```
+    pub fn unicast<A>(
+        payload: T,
+        properties: OutgoingEventProperties,
+        to: &A,
+        version: &str,
+    ) -> OutgoingMessage<T>
+    where
+        A: Addressable,
+    {
+        OutgoingMessage::Event(Self::new(
+            payload,
+            properties,
+            Destination::Unicast(to.as_agent_id().to_owned(), version.to_owned()),
         ))
     }
 }
