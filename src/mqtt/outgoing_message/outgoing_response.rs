@@ -125,7 +125,7 @@ where
         OutgoingMessage::Response(Self::new(
             payload,
             properties,
-            Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
+            Destination::Unicast(to.as_agent_id().to_owned(), version.to_owned()),
         ))
     }
 }

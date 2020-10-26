@@ -134,13 +134,15 @@ where
     /// # Example
     ///
     /// ```
-    /// let props = request.to_request(
+    /// let props = request.properties().to_request(
     ///     "room.enter",
     ///     &Subscription::unicast_responses(),
+    ///     "some_corr_data",
     ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     ///
-    /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props);
+    /// let to = AccountId::new("service_name", "svc.example.org");
+    /// let message = OutgoingRequest::multicast(json!({ "foo": "bar" }), props, &to);
     /// ```
     pub fn multicast<A>(
         payload: T,
@@ -153,7 +155,7 @@ where
         OutgoingMessage::Request(Self::new(
             payload,
             properties,
-            Destination::Multicast(to.as_account_id().clone()),
+            Destination::Multicast(to.as_account_id().to_owned()),
         ))
     }
 
@@ -169,9 +171,10 @@ where
     /// # Example
     ///
     /// ```
-    /// let props = request.to_request(
+    /// let props = request.properties().to_request(
     ///     "room.enter",
     ///     &Subscription::unicast_responses(),
+    ///     "some_corr_data",
     ///     OutgoingShortTermTimingProperties::until_now(start_timestamp),
     /// );
     ///
@@ -190,7 +193,7 @@ where
         OutgoingMessage::Request(Self::new(
             payload,
             properties,
-            Destination::Unicast(to.as_agent_id().clone(), version.to_owned()),
+            Destination::Unicast(to.as_agent_id().to_owned(), version.to_owned()),
         ))
     }
 }
