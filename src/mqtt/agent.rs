@@ -730,21 +730,25 @@ impl From<Notification> for AgentNotification {
                     pkid: message.pkid,
                 };
 
-                let env_result =
-                    serde_json::from_slice::<compat::IncomingEnvelope>(&message.payload)
-                        .map_err(|err| format!("Failed to parse incoming envelope: {}", err))
-                        .and_then(|env| match env.properties() {
-                            compat::IncomingEnvelopeProperties::Request(_) => {
-                                compat::into_request(env)
-                                    .map_err(|e| format!("Failed to convert into request: {}", e))
-                            }
-                            compat::IncomingEnvelopeProperties::Response(_) => {
-                                compat::into_response(env)
-                                    .map_err(|e| format!("Failed to convert into response: {}", e))
-                            }
-                            compat::IncomingEnvelopeProperties::Event(_) => compat::into_event(env)
-                                .map_err(|e| format!("Failed to convert into event: {}", e)),
-                        });
+                let payload = message.payload;
+
+                let env_result = serde_json::from_slice::<compat::IncomingEnvelope>(&payload)
+                    .map_err(|err| {
+                        format!(
+                            "Failed to parse incoming envelope: {}; Message: {:?}",
+                            err, payload,
+                        )
+                    })
+                    .and_then(|env| match env.properties() {
+                        compat::IncomingEnvelopeProperties::Request(_) => compat::into_request(env)
+                            .map_err(|e| format!("Failed to convert into request: {}", e)),
+                        compat::IncomingEnvelopeProperties::Response(_) => {
+                            compat::into_response(env)
+                                .map_err(|e| format!("Failed to convert into response: {}", e))
+                        }
+                        compat::IncomingEnvelopeProperties::Event(_) => compat::into_event(env)
+                            .map_err(|e| format!("Failed to convert into event: {}", e)),
+                    });
 
                 Self::Message(env_result, message_data)
             }
