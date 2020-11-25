@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.12 (November 25, 2020)
+
+### Fixes
+- Yanked v0.14.11 from crates.io
+- Counters hashmap now evicts keys after a while to avoid its bloat ([1f3dc9c](https://github.com/netology-group/svc-agent-rs/commit/1f3dc9cae1204b8cd14e8925db7d76e53422dfc2))
+
+
 ## v0.14.11 (October 22, 2020)
 
 ### Fixes
