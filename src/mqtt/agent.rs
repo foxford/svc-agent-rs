@@ -451,7 +451,7 @@ impl Agent {
         self.publish_dump(dump)
     }
 
-    fn publish_dump(&mut self, dump: PublishableMessage) -> Result<(), Error> {
+    pub fn publish_dump(&mut self, dump: PublishableMessage) -> Result<(), Error> {
         #[cfg(feature = "queue-counter")]
         self.queue_counter.add_outgoing_message(&dump);
 
