@@ -68,7 +68,7 @@ fn request_response() {
     );
 
     let payload = json!({"message": "ping"});
-    let request = OutgoingRequest::multicast(payload, reqp, &service_account_id);
+    let request = OutgoingRequest::multicast(payload, reqp, &service_account_id, "v1");
 
     agent.publish(request).expect("Failed to publish request");
 

@@ -320,7 +320,7 @@ pub enum Destination {
     /// | Type     | Pattern     | MQTT topic                                         |
     /// |----------|-------------|----------------------------------------------------|
     /// | request  | one-to_app  | agents/`MY_AGENT_ID`/api/`MY_VER`/out/`ACCOUNT_ID` |
-    Multicast(AccountId),
+    Multicast(AccountId, String),
     /// Publish a message to the specific instance with known `AGENT_ID`.
     ///
     /// Typically being used for responding to requests.

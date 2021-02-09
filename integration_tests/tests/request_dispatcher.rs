@@ -124,7 +124,7 @@ async fn publish_request(
     );
 
     let payload = json!({"message": "ping"});
-    let msg = OutgoingRequest::multicast(payload, reqp, to);
+    let msg = OutgoingRequest::multicast(payload, reqp, to, "v1");
 
     match msg {
         OutgoingMessage::Request(request) => {
