@@ -125,6 +125,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             json!({}),
                             reqp,
                             &AccountId::new("b-service", "test.svc.example.org"),
+                            "v1"
                         );
 
                         agent
@@ -294,7 +295,7 @@ fn request_chain() {
         ShortTermTimingProperties::new(Utc::now()),
     );
 
-    let request = OutgoingRequest::multicast(json!({}), reqp, &service_a_account_id);
+    let request = OutgoingRequest::multicast(json!({}), reqp, &service_a_account_id, "v1");
 
     agent.publish(request).expect("Failed to publish request");
 

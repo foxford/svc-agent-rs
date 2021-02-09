@@ -148,6 +148,7 @@ where
         payload: T,
         properties: OutgoingRequestProperties,
         to: &A,
+        version: &str,
     ) -> OutgoingMessage<T>
     where
         A: Authenticable,
@@ -155,7 +156,7 @@ where
         OutgoingMessage::Request(Self::new(
             payload,
             properties,
-            Destination::Multicast(to.as_account_id().to_owned()),
+            Destination::Multicast(to.as_account_id().to_owned(), version.to_owned()),
         ))
     }
 
@@ -207,10 +208,10 @@ impl<T: serde::Serialize> Publishable for OutgoingRequest<T> {
                 version = version,
                 app = publisher.id().as_account_id(),
             )),
-            Destination::Multicast(ref account_id) => Ok(format!(
+            Destination::Multicast(ref account_id, ref version) => Ok(format!(
                 "agents/{agent_id}/api/{version}/out/{app}",
                 agent_id = publisher.id(),
-                version = publisher.version(),
+                version = version,
                 app = account_id,
             )),
             _ => Err(Error::new(&format!(
