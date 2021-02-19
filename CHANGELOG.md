@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.15.0 (February 19, 2021)
+### Changes
+- Added version to multicasts ([366895a](https://github.com/netology-group/svc-agent-rs/commit/366895ab564d4452a936c439126168dc6aae91f3))
+
 ## v0.14.13 (December 3, 2020)
 - Make publish_dump public again ([389ef0f](https://github.com/netology-group/svc-agent-rs/commit/389ef0f2b22b0c7e309533709673bdb1851024b3))
 
