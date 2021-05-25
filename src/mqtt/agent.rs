@@ -4,19 +4,10 @@ use std::str::FromStr;
 use async_channel::Sender;
 use lazy_static::lazy_static;
 use log::{debug, error, info};
-use rumqttc::ConnAck;
-use rumqttc::Connect;
-use rumqttc::Event;
-use rumqttc::Packet;
-use rumqttc::PubAck;
-use rumqttc::PubComp;
-use rumqttc::PubRec;
-use rumqttc::PubRel;
-use rumqttc::SubAck;
-use rumqttc::Subscribe;
-use rumqttc::UnsubAck;
-use rumqttc::Unsubscribe;
-use rumqttc::{MqttOptions, Publish, Request};
+use rumqttc::{
+    ConnAck, Connect, Event, MqttOptions, Packet, PubAck, PubComp, PubRec, PubRel, Publish,
+    Request, SubAck, Subscribe, UnsubAck, Unsubscribe,
+};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -220,12 +211,12 @@ impl AgentBuilder {
                                             let method = req.properties().method().to_owned();
                                             req.properties_mut().set_method(&method);
                                         }
-                                        if let Err(e) = tx.send(msg) {
-                                            error!("Failed to transmit message, reason = {}", e);
-                                        };
                                         #[cfg(feature = "queue-counter")]
                                         queue_counter_.add_incoming_message(content);
                                     }
+                                    if let Err(e) = tx.send(msg) {
+                                        error!("Failed to transmit message, reason = {}", e);
+                                    };
                                 }
                             },
                             Err(err) => {
