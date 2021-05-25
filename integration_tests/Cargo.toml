@@ -8,7 +8,6 @@ edition = "2018"
 chrono = "0.4"
 futures = { version = "0.3", features = ["thread-pool"] }
 rand = "0.7"
-serde = "1.0"
-serde_derive = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 svc-agent = { path = ".." }

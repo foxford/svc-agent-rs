@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
@@ -125,7 +125,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             json!({}),
                             reqp,
                             &AccountId::new("b-service", "test.svc.example.org"),
-                            "v1"
+                            "v1",
                         );
 
                         agent
@@ -160,7 +160,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             long_term_timing,
                             short_term_timing,
                             response.properties().tracking().to_owned(),
-                            response.properties().local_tracking_label().to_owned()
+                            response.properties().local_tracking_label().to_owned(),
                         );
 
                         let response =

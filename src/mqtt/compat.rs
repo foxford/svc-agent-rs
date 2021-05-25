@@ -68,7 +68,7 @@
 ///
 /// Enveloping of outgoing messages is up to svc-agent.
 /// Just use (Agent::publish)[../struct.Agent.html#method.publish] method to publish messages.
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::{
     Destination, IncomingEvent, IncomingEventProperties, IncomingMessage, IncomingRequest,

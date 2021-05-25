@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::serde::{
     duration_milliseconds_string_option, ts_milliseconds_string, ts_milliseconds_string_option,

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use futures::executor::ThreadPool;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{

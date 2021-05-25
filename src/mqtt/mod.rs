@@ -1,4 +1,4 @@
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     Addressable, Authenticable, Destination, Error, EventSubscription, RequestSubscription,
@@ -150,7 +150,7 @@ impl ExtraTags {
 /// svc-agent sets QoS = 0 for outgoing events and responses and QoS = 1 for outgoing requests.
 /// This means that only requests are guaranteed to be delivered to the broker but duplicates
 /// are possible so maintaining request idempotency is up to agents.
-pub use rumq_client::QoS;
+pub use rumqttc::QoS;
 
 pub use agent::Address;
 pub use agent::Agent;
