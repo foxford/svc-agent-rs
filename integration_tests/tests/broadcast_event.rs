@@ -56,6 +56,12 @@ fn broadcast_event() {
         .expect("Error subscribing to unicast responses");
 
     match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Connack(_)) => (),
+        Ok(other) => panic!("Expected to receive connack notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive connack notification: {}", err),
+    }
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Suback(_)) => (),
         Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
         Err(err) => panic!("Failed to receive suback notification: {}", err),
