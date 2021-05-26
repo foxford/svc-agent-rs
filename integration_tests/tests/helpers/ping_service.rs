@@ -37,6 +37,12 @@ pub(crate) fn run(init_tx: mpsc::Sender<()>) {
         .expect("Error subscribing to multicast requests");
 
     match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Connack(_)) => (),
+        Ok(other) => panic!("Expected to receive connack notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive connack notification: {}", err),
+    }
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Suback(_)) => (),
         Ok(other) => panic!("Expected to receive suback notification, got {:?}", other),
         Err(err) => panic!("Failed to receive suback notification: {}", err),

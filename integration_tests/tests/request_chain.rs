@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use svc_agent::{
     mqtt::{
@@ -57,6 +57,12 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
     agent
         .subscribe(&req_subscription, QoS::AtLeastOnce, Some(&group))
         .expect("Error subscribing to multicast requests in service A");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Connack(_)) => (),
+        Ok(other) => panic!("Expected to receive connack notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive connack notification: {}", err),
+    }
 
     match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Suback(_)) => (),
@@ -125,7 +131,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             json!({}),
                             reqp,
                             &AccountId::new("b-service", "test.svc.example.org"),
-                            "v1"
+                            "v1",
                         );
 
                         agent
@@ -160,7 +166,7 @@ fn run_service_a(init_tx: mpsc::Sender<()>) {
                             long_term_timing,
                             short_term_timing,
                             response.properties().tracking().to_owned(),
-                            response.properties().local_tracking_label().to_owned()
+                            response.properties().local_tracking_label().to_owned(),
                         );
 
                         let response =
@@ -197,6 +203,12 @@ fn run_service_b(init_tx: mpsc::Sender<()>) {
     agent
         .subscribe(&subscription, QoS::AtLeastOnce, Some(&group))
         .expect("Error subscribing to multicast requests in service B");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Connack(_)) => (),
+        Ok(other) => panic!("Expected to receive connack notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive connack notification: {}", err),
+    }
 
     match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Suback(_)) => (),
@@ -274,6 +286,12 @@ fn request_chain() {
     agent
         .subscribe(&subscription, QoS::AtLeastOnce, None)
         .expect("Error subscribing to unicast responses");
+
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(AgentNotification::Connack(_)) => (),
+        Ok(other) => panic!("Expected to receive connack notification, got {:?}", other),
+        Err(err) => panic!("Failed to receive connack notification: {}", err),
+    }
 
     match rx.recv_timeout(Duration::from_secs(5)) {
         Ok(AgentNotification::Suback(_)) => (),

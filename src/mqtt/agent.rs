@@ -1,15 +1,14 @@
 use std::fmt;
 use std::str::FromStr;
 
-use futures::StreamExt;
-use futures_channel::mpsc::Sender;
+use async_channel::Sender;
 use lazy_static::lazy_static;
 use log::{debug, error, info};
-use rumq_client::{
-    EventLoopError, MqttOptions, Notification, PacketIdentifier, Publish, Request, Suback,
-    Subscribe,
+use rumqttc::{
+    ConnAck, Connect, Event, MqttOptions, Packet, PubAck, PubComp, PubRec, PubRel, Publish,
+    Request, SubAck, Subscribe, UnsubAck, Unsubscribe,
 };
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::{AccountId, Addressable, AgentId, Authenticable, Error, SharedGroup};
@@ -21,8 +20,8 @@ const DEFAULT_MQTT_REQUESTS_CHAN_SIZE: Option<usize> = Some(10_000);
 
 lazy_static! {
     static ref TOKIO: tokio::runtime::Runtime = {
-        let mut rt_builder = tokio::runtime::Builder::new();
-        rt_builder.enable_all().threaded_scheduler();
+        let mut rt_builder = tokio::runtime::Builder::new_multi_thread();
+        rt_builder.enable_all();
 
         let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
             value
@@ -31,7 +30,7 @@ lazy_static! {
         });
 
         if let Some(value) = thread_count {
-            rt_builder.core_threads(value);
+            rt_builder.worker_threads(value);
         }
 
         rt_builder.build().expect("Failed to start tokio runtime")
@@ -179,12 +178,11 @@ impl AgentBuilder {
         rt_handle: tokio::runtime::Handle,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
         let options = Self::mqtt_options(&self.connection, &config)?;
-        let (mqtt_tx, mqtt_rx) = futures_channel::mpsc::channel::<Request>(
-            config
-                .requests_channel_size
-                .expect("requests_channel_size is not specified"),
-        );
-        let mut eventloop = rumq_client::eventloop(options, mqtt_rx);
+        let channel_size = config
+            .requests_channel_size
+            .expect("requests_channel_size is not specified");
+        let mut eventloop = rumqttc::EventLoop::new(options, channel_size);
+        let mqtt_tx = eventloop.handle();
         let reconnect_interval = config.reconnect_interval.to_owned();
         let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
         #[cfg(feature = "queue-counter")]
@@ -195,67 +193,49 @@ impl AgentBuilder {
         std::thread::Builder::new()
             .name("svc-agent-notifications-loop".to_owned())
             .spawn(move || {
-                let mut initial_connect = true;
-
-                // Reconnect loop
-                loop {
-                    let tx = tx.clone();
-                    let connect_fut = eventloop.connect();
-                    #[cfg(feature = "queue-counter")]
-                    let queue_counter_ = queue_counter_.clone();
-
-                    rt_handle.block_on(async {
-                        match connect_fut.await {
-                            Err(err) => error!("Error connecting to broker: {:?}", err),
-                            Ok(mut stream) => {
-                                if initial_connect {
-                                    info!("Doing initial connection");
-                                    initial_connect = false;
-                                } else {
-                                    info!("Was connected before, reconnecting");
-                                    if let Err(e) = tx.send(AgentNotification::Reconnection) {
-                                        error!("Failed to notify about reconnection: {}", e);
-                                    }
+                #[cfg(feature = "queue-counter")]
+                let queue_counter_ = queue_counter_.clone();
+                rt_handle.block_on(async {
+                    loop {
+                        match eventloop.poll().await {
+                            Ok(packet) => match packet {
+                                Event::Outgoing(content) => {
+                                    info!("Outgoing message = '{:?}'", content);
                                 }
-
-                                // Message loop
-                                while let Some(message) = stream.next().await {
-                                    if let Notification::Publish(ref content) = message {
-                                        info!("Incoming message = '{:?}'", content);
-                                    } else {
-                                        debug!("Incoming item = {:?}", message);
-                                    }
-
+                                Event::Incoming(message) => {
+                                    debug!("Incoming item = {:?}", message);
                                     let mut msg: AgentNotification = message.into();
-
                                     if let AgentNotification::Message(Ok(ref mut content), _) = msg
                                     {
                                         if let IncomingMessage::Request(req) = content {
                                             let method = req.properties().method().to_owned();
                                             req.properties_mut().set_method(&method);
                                         }
-
                                         #[cfg(feature = "queue-counter")]
                                         queue_counter_.add_incoming_message(content);
                                     }
-
                                     if let Err(e) = tx.send(msg) {
                                         error!("Failed to transmit message, reason = {}", e);
                                     };
                                 }
+                            },
+                            Err(err) => {
+                                error!("Failed to poll, reason = {}", err);
 
                                 if let Err(e) = tx.send(AgentNotification::Disconnection) {
                                     error!("Failed to notify about disconnection: {}", e);
                                 }
+                                match reconnect_interval {
+                                    Some(value) => {
+                                        tokio::time::sleep(std::time::Duration::from_secs(value))
+                                            .await
+                                    }
+                                    None => break,
+                                }
                             }
                         }
-                    });
-
-                    match reconnect_interval {
-                        Some(value) => std::thread::sleep(std::time::Duration::from_secs(value)),
-                        None => break,
                     }
-                }
+                });
             })
             .map_err(|e| {
                 Error::new(&format!("Failed starting notifications loop thread, {}", e))
@@ -277,9 +257,7 @@ impl AgentBuilder {
             .parse::<http::Uri>()
             .map_err(|e| Error::new(&format!("error parsing MQTT connection URL, {}", e)))?;
         let host = uri.host().ok_or_else(|| Error::new("missing MQTT host"))?;
-        let port = uri
-            .port_part()
-            .ok_or_else(|| Error::new("missing MQTT port"))?;
+        let port = uri.port().ok_or_else(|| Error::new("missing MQTT port"))?;
 
         // For MQTT 3 we specify connection version and mode in username field
         // because it doesn't have user properties like MQTT 5.
@@ -302,15 +280,15 @@ impl AgentBuilder {
         }
 
         if let Some(value) = config.incoming_message_queue_size {
-            opts.set_notification_channel_capacity(value);
+            opts.set_request_channel_capacity(value);
         }
 
         if let Some(value) = config.outgoing_message_queue_size {
-            opts.set_inflight(value);
+            opts.set_inflight(value as u16);
         }
 
         if let Some(value) = config.max_message_size {
-            opts.set_max_packet_size(value);
+            opts.set_max_packet_size(value, value);
         };
 
         Ok(opts)
@@ -701,12 +679,19 @@ pub enum AgentNotification {
     Message(Result<IncomingMessage<String>, String>, MessageData),
     Reconnection,
     Disconnection,
-    Puback(PacketIdentifier),
-    Pubrec(PacketIdentifier),
-    Pubcomp(PacketIdentifier),
-    Suback(Suback),
-    Unsuback(PacketIdentifier),
-    Abort(EventLoopError),
+    Puback(PubAck),
+    Pubrec(PubRec),
+    Pubcomp(PubComp),
+    Suback(SubAck),
+    Unsuback(UnsubAck),
+    Connect(Connect),
+    Connack(ConnAck),
+    Pubrel(PubRel),
+    Subscribe(Subscribe),
+    Unsubscribe(Unsubscribe),
+    PingReq,
+    PingResp,
+    Disconnect,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -715,18 +700,18 @@ pub struct MessageData {
     pub qos: QoS,
     pub retain: bool,
     pub topic: String,
-    pub pkid: Option<PacketIdentifier>,
+    pub pkid: u16,
 }
 
-impl From<Notification> for AgentNotification {
-    fn from(notification: Notification) -> Self {
+impl From<Packet> for AgentNotification {
+    fn from(notification: Packet) -> Self {
         match notification {
-            Notification::Publish(message) => {
+            Packet::Publish(message) => {
                 let message_data = MessageData {
                     dup: message.dup,
                     qos: message.qos,
                     retain: message.retain,
-                    topic: message.topic_name,
+                    topic: message.topic,
                     pkid: message.pkid,
                 };
 
@@ -748,12 +733,19 @@ impl From<Notification> for AgentNotification {
 
                 Self::Message(env_result, message_data)
             }
-            Notification::Puback(p) => Self::Puback(p),
-            Notification::Pubrec(p) => Self::Pubrec(p),
-            Notification::Pubcomp(p) => Self::Pubcomp(p),
-            Notification::Suback(s) => Self::Suback(s),
-            Notification::Unsuback(p) => Self::Unsuback(p),
-            Notification::Abort(err) => Self::Abort(err),
+            Packet::PubAck(p) => Self::Puback(p),
+            Packet::PubRec(p) => Self::Pubrec(p),
+            Packet::PubComp(p) => Self::Pubcomp(p),
+            Packet::SubAck(s) => Self::Suback(s),
+            Packet::UnsubAck(p) => Self::Unsuback(p),
+            Packet::Connect(connect) => Self::Connect(connect),
+            Packet::ConnAck(conn_ack) => Self::Connack(conn_ack),
+            Packet::PubRel(pub_rel) => Self::Pubrel(pub_rel),
+            Packet::Subscribe(sub) => Self::Subscribe(sub),
+            Packet::Unsubscribe(unsub) => Self::Unsubscribe(unsub),
+            Packet::PingReq => Self::PingReq,
+            Packet::PingResp => Self::PingResp,
+            Packet::Disconnect => Self::Disconnect,
         }
     }
 }

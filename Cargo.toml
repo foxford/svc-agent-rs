@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"
@@ -20,20 +20,20 @@ doctest = false
 queue-counter = []
 
 [dependencies]
-serde = "1.0"
-serde_derive = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-base64 = "0.10"
+base64 = "0.13"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
 sqlx = { version = "0.4.0-beta.1", features = ["postgres"], optional = true }
-rumq_client = { version = "0.1.0-alpha.11", package = "svc-rumq-client" }
-http = "0.1"
+rumqttc = "0.6"
+http = "0.2"
 svc-authn = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 futures = "0.3"
 futures-channel = "0.3"
-crossbeam-channel = "0.3"
+crossbeam-channel = "0.5"
 log = "0.4"
-tokio = { version = "0.2", features = ["rt-threaded", "io-driver", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 lazy_static = "1.4.0"
+async-channel = "1"
