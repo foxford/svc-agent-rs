@@ -278,7 +278,7 @@ impl AgentBuilder {
             .to_owned()
             .unwrap_or_else(|| String::from(""));
 
-        let mut opts = MqttOptions::new(connection.agent_id.to_string(), host, port.as_u16());
+        let mut opts = MqttOptions::new(connection.agent_id.to_string(), host, port);
         opts.set_credentials(username, password);
 
         if let Some(value) = config.clean_session {
