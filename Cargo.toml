@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent"
-version = "0.16.0"
+version = "0.17.0"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"
@@ -24,9 +24,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.13"
 diesel = { version = "1.4", features = ["postgres"], optional = true }
-sqlx = { version = "0.4", features = ["postgres"], optional = true }
+sqlx = { version = "0.4.0-beta.1", features = ["postgres"], optional = true }
 rumqttc = "0.7"
-http = "0.2"
+http = "0.1"
 svc-authn = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
