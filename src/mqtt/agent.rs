@@ -267,7 +267,9 @@ impl AgentBuilder {
             .parse::<http::Uri>()
             .map_err(|e| Error::new(&format!("error parsing MQTT connection URL, {}", e)))?;
         let host = uri.host().ok_or_else(|| Error::new("missing MQTT host"))?;
-        let port = uri.port().ok_or_else(|| Error::new("missing MQTT port"))?;
+        let port = uri
+            .port_u16()
+            .ok_or_else(|| Error::new("missing MQTT port"))?;
 
         // For MQTT 3 we specify connection version and mode in username field
         // because it doesn't have user properties like MQTT 5.
