@@ -196,34 +196,44 @@ impl AgentBuilder {
                 #[cfg(feature = "queue-counter")]
                 let queue_counter_ = queue_counter_.clone();
                 rt_handle.block_on(async {
+                    let mut recovering_connection = false;
                     loop {
                         match eventloop.poll().await {
-                            Ok(packet) => match packet {
-                                Event::Outgoing(content) => {
-                                    info!("Outgoing message = '{:?}'", content);
-                                }
-                                Event::Incoming(message) => {
-                                    debug!("Incoming item = {:?}", message);
-                                    let mut msg: AgentNotification = message.into();
-                                    if let AgentNotification::Message(Ok(ref mut content), _) = msg
-                                    {
-                                        if let IncomingMessage::Request(req) = content {
-                                            let method = req.properties().method().to_owned();
-                                            req.properties_mut().set_method(&method);
-                                        }
-                                        #[cfg(feature = "queue-counter")]
-                                        queue_counter_.add_incoming_message(content);
+                            Ok(packet) => {
+                                if recovering_connection {
+                                    recovering_connection = false;
+                                    if let Err(e) = tx.send(AgentNotification::Reconnection) {
+                                        error!("Failed to notify about reconnection: {}", e);
                                     }
-                                    if let Err(e) = tx.send(msg) {
-                                        error!("Failed to transmit message, reason = {}", e);
-                                    };
                                 }
-                            },
+                                match packet {
+                                    Event::Outgoing(content) => {
+                                        info!("Outgoing message = '{:?}'", content);
+                                    }
+                                    Event::Incoming(message) => {
+                                        debug!("Incoming item = {:?}", message);
+                                        let mut msg: AgentNotification = message.into();
+                                        if let AgentNotification::Message(Ok(ref mut content), _) =
+                                            msg
+                                        {
+                                            if let IncomingMessage::Request(req) = content {
+                                                let method = req.properties().method().to_owned();
+                                                req.properties_mut().set_method(&method);
+                                            }
+                                            #[cfg(feature = "queue-counter")]
+                                            queue_counter_.add_incoming_message(content);
+                                        }
+                                        if let Err(e) = tx.send(msg) {
+                                            error!("Failed to transmit message, reason = {}", e);
+                                        };
+                                    }
+                                }
+                            }
                             Err(err) => {
                                 error!("Failed to poll, reason = {}", err);
-
-                                if let Err(e) = tx.send(AgentNotification::Disconnection) {
-                                    error!("Failed to notify about disconnection: {}", e);
+                                recovering_connection = true;
+                                if let Err(e) = tx.send(AgentNotification::ConnectionError) {
+                                    error!("Failed to notify about connection error: {}", e);
                                 }
                                 match reconnect_interval {
                                     Some(value) => {
@@ -257,7 +267,9 @@ impl AgentBuilder {
             .parse::<http::Uri>()
             .map_err(|e| Error::new(&format!("error parsing MQTT connection URL, {}", e)))?;
         let host = uri.host().ok_or_else(|| Error::new("missing MQTT host"))?;
-        let port = uri.port().ok_or_else(|| Error::new("missing MQTT port"))?;
+        let port = uri
+            .port_u16()
+            .ok_or_else(|| Error::new("missing MQTT port"))?;
 
         // For MQTT 3 we specify connection version and mode in username field
         // because it doesn't have user properties like MQTT 5.
@@ -268,7 +280,7 @@ impl AgentBuilder {
             .to_owned()
             .unwrap_or_else(|| String::from(""));
 
-        let mut opts = MqttOptions::new(connection.agent_id.to_string(), host, port.as_u16());
+        let mut opts = MqttOptions::new(connection.agent_id.to_string(), host, port);
         opts.set_credentials(username, password);
 
         if let Some(value) = config.clean_session {
@@ -678,7 +690,7 @@ impl Addressable for ConnectionProperties {
 pub enum AgentNotification {
     Message(Result<IncomingMessage<String>, String>, MessageData),
     Reconnection,
-    Disconnection,
+    ConnectionError,
     Puback(PubAck),
     Pubrec(PubRec),
     Pubcomp(PubComp),
