@@ -213,13 +213,13 @@ impl AgentBuilder {
                                     Event::Incoming(message) => {
                                         debug!("Incoming item = {:?}", message);
                                         let mut msg: AgentNotification = message.into();
-                                        if let AgentNotification::Message(Ok(ref mut content), _) =
-                                            msg
+                                        if let AgentNotification::Message(
+                                            Ok(IncomingMessage::Request(ref mut req)),
+                                            _,
+                                        ) = msg
                                         {
-                                            if let IncomingMessage::Request(req) = content {
-                                                let method = req.properties().method().to_owned();
-                                                req.properties_mut().set_method(&method);
-                                            }
+                                            let method = req.properties().method().to_owned();
+                                            req.properties_mut().set_method(&method);
                                             #[cfg(feature = "queue-counter")]
                                             queue_counter_.add_incoming_message(content);
                                         }
@@ -637,9 +637,9 @@ impl FromStr for Connection {
                 let mode = ConnectionMode::from_str(mode_str)?;
                 let agent_id = AgentId::from_str(agent_id_str)?;
                 Ok(Self {
+                    agent_id,
                     version,
                     mode,
-                    agent_id,
                 })
             }
             _ => Err(Error::new(&format!(
