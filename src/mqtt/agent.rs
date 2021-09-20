@@ -505,16 +505,45 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(self.id(), self.address.version())?;
-        if let Some(ref group) = maybe_group {
-            topic = format!("$share/{group}/{topic}", group = group, topic = topic);
-        };
+        let topic = self.get_topic(subscription, maybe_group)?;
 
         self.tx
             .try_send(Request::Subscribe(Subscribe::new(topic, qos)))
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
+    }
+
+    pub fn unsbuscribe<S>(
+        &mut self,
+        subscription: &S,
+        maybe_group: Option<&SharedGroup>,
+    ) -> Result<(), Error>
+    where
+        S: SubscriptionTopic,
+    {
+        let topic = self.get_topic(subscription, maybe_group)?;
+
+        self.tx
+            .try_send(Request::Unsubscribe(Unsubscribe::new(topic)))
+            .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
+
+        Ok(())
+    }
+
+    fn get_topic<S>(
+        &self,
+        subscription: &S,
+        maybe_group: Option<&SharedGroup>,
+    ) -> Result<String, Error>
+    where
+        S: SubscriptionTopic,
+    {
+        let mut topic = subscription.subscription_topic(self.id(), self.address.version())?;
+        if let Some(ref group) = maybe_group {
+            topic = format!("$share/{group}/{topic}", group = group, topic = topic);
+        };
+        Ok(topic)
     }
 
     #[cfg(feature = "queue-counter")]
