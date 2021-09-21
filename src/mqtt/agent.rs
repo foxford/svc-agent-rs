@@ -177,7 +177,7 @@ impl AgentBuilder {
         config: &AgentConfig,
         rt_handle: tokio::runtime::Handle,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
-        let options = Self::mqtt_options(&self.connection, &config)?;
+        let options = Self::mqtt_options(&self.connection, config)?;
         let channel_size = config
             .requests_channel_size
             .expect("requests_channel_size is not specified");
@@ -213,13 +213,13 @@ impl AgentBuilder {
                                     Event::Incoming(message) => {
                                         debug!("Incoming item = {:?}", message);
                                         let mut msg: AgentNotification = message.into();
-                                        if let AgentNotification::Message(Ok(ref mut content), _) =
-                                            msg
+                                        if let AgentNotification::Message(
+                                            Ok(IncomingMessage::Request(ref mut req)),
+                                            _,
+                                        ) = msg
                                         {
-                                            if let IncomingMessage::Request(req) = content {
-                                                let method = req.properties().method().to_owned();
-                                                req.properties_mut().set_method(&method);
-                                            }
+                                            let method = req.properties().method().to_owned();
+                                            req.properties_mut().set_method(&method);
                                             #[cfg(feature = "queue-counter")]
                                             queue_counter_.add_incoming_message(content);
                                         }
@@ -366,7 +366,7 @@ impl Agent {
     }
 
     pub fn id(&self) -> &AgentId {
-        &self.address.id()
+        self.address.id()
     }
 
     /// Publish a message.
@@ -701,7 +701,7 @@ impl ConnectionProperties {
 
 impl Authenticable for ConnectionProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.agent_id.as_account_id()
+        self.agent_id.as_account_id()
     }
 }
 

@@ -198,13 +198,13 @@ impl IncomingRequestProperties {
 
 impl Authenticable for IncomingRequestProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.conn.as_account_id()
+        self.conn.as_account_id()
     }
 }
 
 impl Addressable for IncomingRequestProperties {
     fn as_agent_id(&self) -> &AgentId {
-        &self.conn.as_agent_id()
+        self.conn.as_agent_id()
     }
 }
 
@@ -257,7 +257,7 @@ impl<String: std::ops::Deref<Target = str>> IncomingRequest<String> {
     where
         T: serde::de::DeserializeOwned,
     {
-        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+        let payload = serde_json::from_str::<T>(message.payload()).map_err(|e| {
             Error::new(&format!(
                 "error deserializing payload of an envelope, {}",
                 &e
@@ -271,7 +271,7 @@ impl<String: std::ops::Deref<Target = str>> IncomingRequest<String> {
         T: serde::de::DeserializeOwned,
     {
         let props = message.properties().to_owned();
-        let payload = serde_json::from_str::<T>(&message.payload()).map_err(|e| {
+        let payload = serde_json::from_str::<T>(message.payload()).map_err(|e| {
             Error::new(&format!(
                 "error deserializing payload of an envelope, {}",
                 &e
