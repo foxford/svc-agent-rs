@@ -514,7 +514,7 @@ impl Agent {
         Ok(())
     }
 
-    pub fn unsbuscribe<S>(
+    pub fn unsubscribe<S>(
         &mut self,
         subscription: &S,
         maybe_group: Option<&SharedGroup>,
