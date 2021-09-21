@@ -514,6 +514,30 @@ impl Agent {
         Ok(())
     }
 
+    /// Unsubscribe from a topic.
+    ///
+    /// Note that the unsubscribing is actually gets confirmed on receiving
+    /// `AgentNotification::Unsuback` notification.
+    ///
+    /// # Arguments
+    ///
+    /// * `subscription` – the [Subscription](struct.Subscription.html).
+    /// * `maybe_group` – [SharedGroup](struct.SharedGroup.html) in case of multicast subscription.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// agent.unsubscribe(
+    ///     &Subscription::multicast_requests(Some("v1")),
+    ///     Some(&group),
+    /// )?;
+    ///
+    /// match rx.recv_timeout(Duration::from_secs(5)) {
+    ///     Ok(AgentNotification::Unsuback(_)) => (),
+    ///     Ok(other) => panic!("Expected to receive unsuback notification, got {:?}", other),
+    ///     Err(err) => panic!("Failed to receive unsuback notification: {}", err),
+    /// }
+    /// ```
     pub fn unsubscribe<S>(
         &mut self,
         subscription: &S,
