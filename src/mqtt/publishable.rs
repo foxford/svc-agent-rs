@@ -95,7 +95,7 @@ impl<T: serde::Serialize> IntoPublishableMessage for OutgoingMessage<T> {
     fn into_dump(self: Box<Self>, publisher: &Address) -> Result<PublishableMessage, Error> {
         use crate::mqtt::compat::{IntoEnvelope, OutgoingEnvelopeProperties};
 
-        let topic = self.destination_topic(&publisher)?;
+        let topic = self.destination_topic(publisher)?;
         let qos = self.qos();
         let tags = self.tags().to_owned();
 

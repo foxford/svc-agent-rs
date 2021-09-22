@@ -177,7 +177,7 @@ impl AgentBuilder {
         config: &AgentConfig,
         rt_handle: tokio::runtime::Handle,
     ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
-        let options = Self::mqtt_options(&self.connection, &config)?;
+        let options = Self::mqtt_options(&self.connection, config)?;
         let channel_size = config
             .requests_channel_size
             .expect("requests_channel_size is not specified");
@@ -213,13 +213,13 @@ impl AgentBuilder {
                                     Event::Incoming(message) => {
                                         debug!("Incoming item = {:?}", message);
                                         let mut msg: AgentNotification = message.into();
-                                        if let AgentNotification::Message(Ok(ref mut content), _) =
-                                            msg
+                                        if let AgentNotification::Message(
+                                            Ok(IncomingMessage::Request(ref mut req)),
+                                            _,
+                                        ) = msg
                                         {
-                                            if let IncomingMessage::Request(req) = content {
-                                                let method = req.properties().method().to_owned();
-                                                req.properties_mut().set_method(&method);
-                                            }
+                                            let method = req.properties().method().to_owned();
+                                            req.properties_mut().set_method(&method);
                                             #[cfg(feature = "queue-counter")]
                                             queue_counter_.add_incoming_message(content);
                                         }
@@ -366,7 +366,7 @@ impl Agent {
     }
 
     pub fn id(&self) -> &AgentId {
-        &self.address.id()
+        self.address.id()
     }
 
     /// Publish a message.
@@ -505,16 +505,69 @@ impl Agent {
     where
         S: SubscriptionTopic,
     {
-        let mut topic = subscription.subscription_topic(self.id(), self.address.version())?;
-        if let Some(ref group) = maybe_group {
-            topic = format!("$share/{group}/{topic}", group = group, topic = topic);
-        };
+        let topic = self.get_topic(subscription, maybe_group)?;
 
         self.tx
             .try_send(Request::Subscribe(Subscribe::new(topic, qos)))
             .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
 
         Ok(())
+    }
+
+    /// Unsubscribe from a topic.
+    ///
+    /// Note that the unsubscribing is actually gets confirmed on receiving
+    /// `AgentNotification::Unsuback` notification.
+    ///
+    /// # Arguments
+    ///
+    /// * `subscription` – the [Subscription](struct.Subscription.html).
+    /// * `maybe_group` – [SharedGroup](struct.SharedGroup.html) in case of multicast subscription.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// agent.unsubscribe(
+    ///     &Subscription::multicast_requests(Some("v1")),
+    ///     Some(&group),
+    /// )?;
+    ///
+    /// match rx.recv_timeout(Duration::from_secs(5)) {
+    ///     Ok(AgentNotification::Unsuback(_)) => (),
+    ///     Ok(other) => panic!("Expected to receive unsuback notification, got {:?}", other),
+    ///     Err(err) => panic!("Failed to receive unsuback notification: {}", err),
+    /// }
+    /// ```
+    pub fn unsubscribe<S>(
+        &mut self,
+        subscription: &S,
+        maybe_group: Option<&SharedGroup>,
+    ) -> Result<(), Error>
+    where
+        S: SubscriptionTopic,
+    {
+        let topic = self.get_topic(subscription, maybe_group)?;
+
+        self.tx
+            .try_send(Request::Unsubscribe(Unsubscribe::new(topic)))
+            .map_err(|e| Error::new(&format!("error creating MQTT subscription, {}", e)))?;
+
+        Ok(())
+    }
+
+    fn get_topic<S>(
+        &self,
+        subscription: &S,
+        maybe_group: Option<&SharedGroup>,
+    ) -> Result<String, Error>
+    where
+        S: SubscriptionTopic,
+    {
+        let mut topic = subscription.subscription_topic(self.id(), self.address.version())?;
+        if let Some(ref group) = maybe_group {
+            topic = format!("$share/{group}/{topic}", group = group, topic = topic);
+        };
+        Ok(topic)
     }
 
     #[cfg(feature = "queue-counter")]
@@ -672,7 +725,7 @@ impl ConnectionProperties {
 
 impl Authenticable for ConnectionProperties {
     fn as_account_id(&self) -> &AccountId {
-        &self.agent_id.as_account_id()
+        self.agent_id.as_account_id()
     }
 }
 

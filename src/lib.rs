@@ -168,7 +168,7 @@ impl FromStr for AgentId {
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = val.splitn(2, '.').collect();
         match parts[..] {
-            [ref label, ref rest] => {
+            [label, rest] => {
                 let account_id = rest.parse::<AccountId>().map_err(|e| {
                     Error::new(&format!(
                         "error deserializing shared group from a string, {}",
@@ -257,7 +257,7 @@ impl FromStr for SharedGroup {
     fn from_str(val: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = val.splitn(2, '.').collect();
         match parts[..] {
-            [ref label, ref rest] => {
+            [label, rest] => {
                 let account_id = rest.parse::<AccountId>().map_err(|e| {
                     Error::new(&format!(
                         "error deserializing shared group from a string, {}",

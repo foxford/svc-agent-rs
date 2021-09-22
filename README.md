@@ -1,7 +1,5 @@
 # Agent
 
-[![Build Status][travis-img]][travis]
-
 An agent library.
 
 
