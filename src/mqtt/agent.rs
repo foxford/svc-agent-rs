@@ -213,16 +213,17 @@ impl AgentBuilder {
                                     Event::Incoming(message) => {
                                         debug!("Incoming item = {:?}", message);
                                         let mut msg: AgentNotification = message.into();
-                                        if let AgentNotification::Message(
-                                            Ok(IncomingMessage::Request(ref mut req)),
-                                            _,
-                                        ) = msg
+                                        if let AgentNotification::Message(Ok(ref mut content), _) =
+                                            msg
                                         {
-                                            let method = req.properties().method().to_owned();
-                                            req.properties_mut().set_method(&method);
+                                            if let IncomingMessage::Request(req) = content {
+                                                let method = req.properties().method().to_owned();
+                                                req.properties_mut().set_method(&method);
+                                            }
                                             #[cfg(feature = "queue-counter")]
                                             queue_counter_.add_incoming_message(content);
                                         }
+
                                         if let Err(e) = tx.send(msg) {
                                             error!("Failed to transmit message, reason = {}", e);
                                         };
