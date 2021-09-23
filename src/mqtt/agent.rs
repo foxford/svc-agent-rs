@@ -2,13 +2,13 @@ use std::fmt;
 use std::str::FromStr;
 
 use async_channel::Sender;
-use lazy_static::lazy_static;
 use log::{debug, error, info};
 use rumqttc::{
     ConnAck, Connect, Event, MqttOptions, Packet, PubAck, PubComp, PubRec, PubRel, Publish,
     Request, SubAck, Subscribe, UnsubAck, Unsubscribe,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::*;
 use crate::{AccountId, Addressable, AgentId, Authenticable, Error, SharedGroup};
@@ -17,25 +17,6 @@ use crate::{AccountId, Addressable, AgentId, Authenticable, Error, SharedGroup};
 use crate::queue_counter::QueueCounterHandle;
 
 const DEFAULT_MQTT_REQUESTS_CHAN_SIZE: Option<usize> = Some(10_000);
-
-lazy_static! {
-    static ref TOKIO: tokio::runtime::Runtime = {
-        let mut rt_builder = tokio::runtime::Builder::new_multi_thread();
-        rt_builder.enable_all();
-
-        let thread_count = std::env::var("TOKIO_THREAD_COUNT").ok().map(|value| {
-            value
-                .parse::<usize>()
-                .expect("Error converting TOKIO_THREAD_COUNT variable into usize")
-        });
-
-        if let Some(value) = thread_count {
-            rt_builder.worker_threads(value);
-        }
-
-        rt_builder.build().expect("Failed to start tokio runtime")
-    };
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -165,101 +146,83 @@ impl AgentBuilder {
     ///     }
     /// }
     /// ```
-    pub fn start(
+    pub async fn start(
         self,
         config: &AgentConfig,
-    ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
-        self.start_with_runtime(config, TOKIO.handle().clone())
-    }
-
-    pub fn start_with_runtime(
-        self,
-        config: &AgentConfig,
-        rt_handle: tokio::runtime::Handle,
-    ) -> Result<(Agent, crossbeam_channel::Receiver<AgentNotification>), Error> {
-        let options = Self::mqtt_options(&self.connection, config)?;
-        let channel_size = config
-            .requests_channel_size
-            .expect("requests_channel_size is not specified");
-        let mut eventloop = rumqttc::EventLoop::new(options, channel_size);
-        let mqtt_tx = eventloop.handle();
-        let reconnect_interval = config.reconnect_interval.to_owned();
-        let (tx, rx) = crossbeam_channel::unbounded::<AgentNotification>();
-        #[cfg(feature = "queue-counter")]
-        let queue_counter = QueueCounterHandle::start();
-        #[cfg(feature = "queue-counter")]
-        let queue_counter_ = queue_counter.clone();
-
-        std::thread::Builder::new()
-            .name("svc-agent-notifications-loop".to_owned())
-            .spawn(move || {
-                #[cfg(feature = "queue-counter")]
-                let queue_counter_ = queue_counter_.clone();
-                rt_handle.block_on(async {
-                    let mut recovering_connection = false;
-                    loop {
-                        match eventloop.poll().await {
-                            Ok(packet) => {
-                                if recovering_connection {
-                                    recovering_connection = false;
-                                    if let Err(e) = tx.send(AgentNotification::Reconnection) {
-                                        error!("Failed to notify about reconnection: {}", e);
-                                    }
-                                }
-                                match packet {
-                                    Event::Outgoing(content) => {
-                                        info!("Outgoing message = '{:?}'", content);
-                                    }
-                                    Event::Incoming(message) => {
-                                        debug!("Incoming item = {:?}", message);
-                                        let mut msg: AgentNotification = message.into();
-                                        if let AgentNotification::Message(Ok(ref mut content), _) =
-                                            msg
-                                        {
-                                            if let IncomingMessage::Request(req) = content {
-                                                let method = req.properties().method().to_owned();
-                                                req.properties_mut().set_method(&method);
-                                            }
-                                            #[cfg(feature = "queue-counter")]
-                                            queue_counter_.add_incoming_message(content);
-                                        }
-
-                                        if let Err(e) = tx.send(msg) {
-                                            error!("Failed to transmit message, reason = {}", e);
-                                        };
-                                    }
+    ) -> Result<(Agent, UnboundedReceiver<AgentNotification>), Error> {
+        {
+            let options = Self::mqtt_options(&self.connection, config)?;
+            let channel_size = config
+                .requests_channel_size
+                .expect("requests_channel_size is not specified");
+            let mut eventloop = rumqttc::EventLoop::new(options, channel_size);
+            let mqtt_tx = eventloop.handle();
+            let reconnect_interval = config.reconnect_interval.to_owned();
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentNotification>();
+            #[cfg(feature = "queue-counter")]
+            let queue_counter = QueueCounterHandle::start();
+            #[cfg(feature = "queue-counter")]
+            let queue_counter_ = queue_counter.clone();
+            tokio::spawn(async move {
+                let mut recovering_connection = false;
+                loop {
+                    match eventloop.poll().await {
+                        Ok(packet) => {
+                            if recovering_connection {
+                                recovering_connection = false;
+                                if let Err(e) = tx.send(AgentNotification::Reconnection) {
+                                    error!("Failed to notify about reconnection: {}", e);
                                 }
                             }
-                            Err(err) => {
-                                error!("Failed to poll, reason = {}", err);
-                                recovering_connection = true;
-                                if let Err(e) = tx.send(AgentNotification::ConnectionError) {
-                                    error!("Failed to notify about connection error: {}", e);
+                            match packet {
+                                Event::Outgoing(content) => {
+                                    info!("Outgoing message = '{:?}'", content);
                                 }
-                                match reconnect_interval {
-                                    Some(value) => {
-                                        tokio::time::sleep(std::time::Duration::from_secs(value))
-                                            .await
+                                Event::Incoming(message) => {
+                                    debug!("Incoming item = {:?}", message);
+                                    let mut msg: AgentNotification = message.into();
+                                    if let AgentNotification::Message(Ok(ref mut content), _) = msg
+                                    {
+                                        if let IncomingMessage::Request(req) = content {
+                                            let method = req.properties().method().to_owned();
+                                            req.properties_mut().set_method(&method);
+                                        }
+                                        #[cfg(feature = "queue-counter")]
+                                        queue_counter_.add_incoming_message(content);
                                     }
-                                    None => break,
+
+                                    if let Err(e) = tx.send(msg) {
+                                        error!("Failed to transmit message, reason = {}", e);
+                                    };
                                 }
                             }
                         }
+                        Err(err) => {
+                            error!("Failed to poll, reason = {}", err);
+                            recovering_connection = true;
+                            if let Err(e) = tx.send(AgentNotification::ConnectionError) {
+                                error!("Failed to notify about connection error: {}", e);
+                            }
+                            match reconnect_interval {
+                                Some(value) => {
+                                    tokio::time::sleep(std::time::Duration::from_secs(value)).await
+                                }
+                                None => break,
+                            }
+                        }
                     }
-                });
-            })
-            .map_err(|e| {
-                Error::new(&format!("Failed starting notifications loop thread, {}", e))
-            })?;
-        let agent = Agent::new(
-            self.connection.agent_id,
-            &self.api_version,
-            mqtt_tx,
-            #[cfg(feature = "queue-counter")]
-            queue_counter,
-        );
+                }
+            });
+            let agent = Agent::new(
+                self.connection.agent_id,
+                &self.api_version,
+                mqtt_tx,
+                #[cfg(feature = "queue-counter")]
+                queue_counter,
+            );
 
-        Ok((agent, rx))
+            Ok((agent, rx))
+        }
     }
 
     fn mqtt_options(connection: &Connection, config: &AgentConfig) -> Result<MqttOptions, Error> {

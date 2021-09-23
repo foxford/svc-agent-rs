@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use futures::lock::Mutex;
-use futures_channel::oneshot;
 use serde::{de::DeserializeOwned, ser::Serialize};
 use serde_json::Value as JsonValue;
+use tokio::sync::oneshot;
 
 use crate::{
     mqtt::{Agent, IncomingResponse, OutgoingMessage, OutgoingRequest},

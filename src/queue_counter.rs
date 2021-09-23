@@ -2,14 +2,15 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use futures::channel::oneshot;
 use log::error;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use crate::mqtt::ExtraTags;
 use crate::mqtt::{IncomingMessage, PublishableMessage};
 
 struct QueueCounter {
-    cmd_rx: Receiver<TimestampedCommand>,
+    cmd_rx: UnboundedReceiver<TimestampedCommand>,
     counters: HashMap<ExtraTags, QueuesCounterInstant>,
 }
 
@@ -47,7 +48,7 @@ enum Command {
     OutgoingRequest(ExtraTags),
     OutgoingResponse(ExtraTags),
     OutgoingEvent(ExtraTags),
-    GetThroughput(Sender<HashMap<ExtraTags, QueuesCounter>>),
+    GetThroughput(oneshot::Sender<HashMap<ExtraTags, QueuesCounter>>),
 }
 
 #[derive(Debug)]
@@ -58,24 +59,18 @@ struct TimestampedCommand {
 
 #[derive(Clone)]
 pub struct QueueCounterHandle {
-    cmd_tx: Sender<TimestampedCommand>,
+    cmd_tx: UnboundedSender<TimestampedCommand>,
 }
 
 impl QueueCounterHandle {
     pub(crate) fn start() -> Self {
-        let (cmd_tx, cmd_rx) = unbounded::<TimestampedCommand>();
+        let (cmd_tx, cmd_rx) = unbounded_channel();
 
         let mut counter = QueueCounter {
             cmd_rx,
             counters: HashMap::new(),
         };
-
-        let builder = std::thread::Builder::new().name("qc-command-loop".into());
-        builder
-            .spawn(move || {
-                counter.start_loop();
-            })
-            .expect("Failed to start qc-command-loop thread");
+        tokio::spawn(async move { counter.start_loop().await });
         Self { cmd_tx }
     }
 
@@ -128,14 +123,14 @@ impl QueueCounterHandle {
         }
     }
 
-    pub fn get_stats(&self) -> Result<HashMap<ExtraTags, QueuesCounter>, String> {
-        let (resp_tx, resp_rx) = bounded::<_>(1);
+    pub async fn get_stats(&self) -> Result<HashMap<ExtraTags, QueuesCounter>, String> {
+        let (resp_tx, resp_rx) = oneshot::channel();
         let command = Command::GetThroughput(resp_tx);
 
         self.send_command(command);
 
         resp_rx
-            .recv()
+            .await
             .map_err(|e| format!("get_stats went wrong: {:?}", e))
     }
 }
@@ -144,10 +139,10 @@ const EVICTION_PERIOD: Duration = Duration::from_secs(600);
 const EVICTION_CHECK_PERIOD: Duration = Duration::from_secs(5);
 
 impl QueueCounter {
-    fn start_loop(&mut self) {
+    async fn start_loop(&mut self) {
         let mut last_checked = Instant::now();
 
-        while let Ok(c) = self.cmd_rx.recv() {
+        while let Some(c) = self.cmd_rx.recv().await {
             if last_checked.elapsed() > EVICTION_CHECK_PERIOD {
                 self.evict_old_counters();
                 last_checked = Instant::now();
