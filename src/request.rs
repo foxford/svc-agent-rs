@@ -1,9 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Mutex};
 
-use futures::lock::Mutex;
-use futures_channel::oneshot;
 use serde::{de::DeserializeOwned, ser::Serialize};
 use serde_json::Value as JsonValue;
+use tokio::sync::oneshot;
 
 use crate::{
     mqtt::{Agent, IncomingResponse, OutgoingMessage, OutgoingRequest},
@@ -32,7 +31,7 @@ impl Dispatcher {
         Resp: DeserializeOwned,
     {
         let corr_data = req.properties().correlation_data();
-        let mut store_lock = self.store.lock().await;
+        let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
 
         if store_lock.get(corr_data).is_some() {
             let err = format!(
@@ -59,8 +58,8 @@ impl Dispatcher {
         Ok(IncomingResponse::new(payload, props))
     }
 
-    pub async fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
-        let mut store_lock = self.store.lock().await;
+    pub fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
+        let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
 
         let tx = store_lock
             .remove(resp.properties().correlation_data())
@@ -83,10 +82,10 @@ impl Dispatcher {
         Ok(())
     }
 
-    pub async fn cancel_request(&self, corr_data: &str) -> Result<(), Error> {
+    pub fn cancel_request(&self, corr_data: &str) -> Result<(), Error> {
         self.store
             .lock()
-            .await
+            .expect("Dispatcher lock poisoned")
             .remove(corr_data)
             .map(|_| ())
             .ok_or_else(|| Error::new(&format!(
