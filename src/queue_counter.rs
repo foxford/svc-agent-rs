@@ -3,7 +3,10 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use log::error;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    oneshot,
+};
 
 use crate::mqtt::ExtraTags;
 use crate::mqtt::{IncomingMessage, PublishableMessage};
