@@ -146,7 +146,7 @@ impl AgentBuilder {
     ///     }
     /// }
     /// ```
-    pub async fn start(
+    pub fn start(
         self,
         config: &AgentConfig,
     ) -> Result<(Agent, UnboundedReceiver<AgentNotification>), Error> {
