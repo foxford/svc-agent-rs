@@ -82,7 +82,7 @@ impl Dispatcher {
         Ok(())
     }
 
-    pub async fn cancel_request(&self, corr_data: &str) -> Result<(), Error> {
+    pub fn cancel_request(&self, corr_data: &str) -> Result<(), Error> {
         self.store
             .lock()
             .expect("Dispatcher lock poisoned")
