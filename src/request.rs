@@ -58,7 +58,7 @@ impl Dispatcher {
         Ok(IncomingResponse::new(payload, props))
     }
 
-    pub async fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
+    pub fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
         let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
 
         let tx = store_lock
