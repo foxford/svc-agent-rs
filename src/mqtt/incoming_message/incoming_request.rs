@@ -208,6 +208,18 @@ impl Addressable for IncomingRequestProperties {
     }
 }
 
+impl Authenticable for &IncomingRequestProperties {
+    fn as_account_id(&self) -> &AccountId {
+        self.conn.as_account_id()
+    }
+}
+
+impl Addressable for &IncomingRequestProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        self.conn.as_agent_id()
+    }
+}
+
 pub type IncomingRequest<T> = IncomingMessageContent<T, IncomingRequestProperties>;
 
 impl<T> IncomingRequest<T> {

@@ -69,6 +69,18 @@ impl Addressable for IncomingResponseProperties {
     }
 }
 
+impl Authenticable for &IncomingResponseProperties {
+    fn as_account_id(&self) -> &AccountId {
+        self.conn.as_account_id()
+    }
+}
+
+impl Addressable for &IncomingResponseProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        self.conn.as_agent_id()
+    }
+}
+
 pub type IncomingResponse<T> = IncomingMessageContent<T, IncomingResponseProperties>;
 
 impl<String: std::ops::Deref<Target = str>> IncomingResponse<String> {

@@ -699,6 +699,18 @@ impl Addressable for ConnectionProperties {
     }
 }
 
+impl Authenticable for &ConnectionProperties {
+    fn as_account_id(&self) -> &AccountId {
+        self.agent_id.as_account_id()
+    }
+}
+
+impl Addressable for &ConnectionProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        &self.agent_id
+    }
+}
+
 /// An incoming MQTT notification.
 ///
 /// Use it to process incoming messages.

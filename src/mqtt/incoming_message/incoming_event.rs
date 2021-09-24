@@ -104,6 +104,18 @@ impl Addressable for IncomingEventProperties {
     }
 }
 
+impl Authenticable for &IncomingEventProperties {
+    fn as_account_id(&self) -> &AccountId {
+        self.conn.as_account_id()
+    }
+}
+
+impl Addressable for &IncomingEventProperties {
+    fn as_agent_id(&self) -> &AgentId {
+        self.conn.as_agent_id()
+    }
+}
+
 pub type IncomingEvent<T> = IncomingMessageContent<T, IncomingEventProperties>;
 
 impl<String: std::ops::Deref<Target = str>> IncomingEvent<String> {
