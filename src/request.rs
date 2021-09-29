@@ -31,19 +31,22 @@ impl Dispatcher {
         Resp: DeserializeOwned,
     {
         let corr_data = req.properties().correlation_data();
-        let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
+        let rx = {
+            let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
 
-        if store_lock.get(corr_data).is_some() {
-            let err = format!(
-                "Already awaiting response with correlation data = '{}'",
-                corr_data
-            );
-            return Err(Error::new(&err));
-        }
+            if store_lock.get(corr_data).is_some() {
+                let err = format!(
+                    "Already awaiting response with correlation data = '{}'",
+                    corr_data
+                );
+                return Err(Error::new(&err));
+            }
 
-        let (tx, rx) = oneshot::channel::<IncomingResponse<JsonValue>>();
-        store_lock.insert(corr_data.to_owned(), tx);
-        drop(store_lock);
+            let (tx, rx) = oneshot::channel::<IncomingResponse<JsonValue>>();
+            store_lock.insert(corr_data.to_owned(), tx);
+            drop(store_lock);
+            rx
+        };
 
         self.agent.clone().publish(OutgoingMessage::Request(req))?;
 
@@ -59,18 +62,21 @@ impl Dispatcher {
     }
 
     pub fn response(&self, resp: IncomingResponse<JsonValue>) -> Result<(), Error> {
-        let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
+        let tx = {
+            let mut store_lock = self.store.lock().expect("Dispatcher lock poisoned");
 
-        let tx = store_lock
-            .remove(resp.properties().correlation_data())
-            .ok_or_else(|| {
-                Error::new(&format!(
-                    "Failed to commit response with correlation data = '{}': not being awaited",
-                    resp.properties().correlation_data()
-                ))
-            })?;
+            let tx = store_lock
+                .remove(resp.properties().correlation_data())
+                .ok_or_else(|| {
+                    Error::new(&format!(
+                        "Failed to commit response with correlation data = '{}': not being awaited",
+                        resp.properties().correlation_data()
+                    ))
+                })?;
 
-        drop(store_lock);
+            drop(store_lock);
+            tx
+        };
 
         tx.send(resp).map_err(|resp| {
             Error::new(&format!(
