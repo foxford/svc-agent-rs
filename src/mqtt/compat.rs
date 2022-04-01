@@ -153,6 +153,7 @@ pub struct OutgoingEnvelope {
     payload: String,
     pub(crate) properties: OutgoingEnvelopeProperties,
     #[serde(skip)]
+    #[allow(dead_code)]
     destination: Destination,
 }
 

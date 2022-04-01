@@ -56,6 +56,7 @@ enum Command {
 #[derive(Debug)]
 struct TimestampedCommand {
     command: Command,
+    #[allow(dead_code)]
     timestamp: DateTime<Utc>,
 }
 
