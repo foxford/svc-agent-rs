@@ -716,6 +716,7 @@ impl Addressable for &ConnectionProperties {
 /// Use it to process incoming messages.
 /// See [AgentBuilder::start](struct.AgentBuilder.html#method.start) for details.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum AgentNotification {
     Message(Result<IncomingMessage<String>, String>, MessageData),
     Reconnection,
