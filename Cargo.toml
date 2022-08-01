@@ -1,12 +1,12 @@
 [package]
 name = "svc-agent"
-version = "0.19.4"
+version = "0.19.5"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"
 keywords = ["agent", "mqtt", "pubsub", "messaging-patterns", "event-driven"]
 categories = ["network-programming", "web-programming"]
-repository = "https://github.com/netology-group/svc-agent-rs"
+repository = "https://github.com/foxford/svc-agent-rs"
 license = "MIT"
 edition = "2018"
 
@@ -26,7 +26,7 @@ log = "0.4"
 rumqttc = "0.7"
 serde = { version = "1.0", features = ["derive" ] }
 serde_json = "1.0"
-sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres"], optional = true }
+sqlx = { version = "0.6", features = ["runtime-tokio-native-tls", "postgres"], optional = true }
 svc-authn = { version = "0.7", features = ["diesel", "sqlx"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { version = "1.1", features = ["serde", "v4"] }
