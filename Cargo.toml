@@ -20,7 +20,7 @@ queue-counter = []
 async-channel = "1"
 base64 = "0.13"
 chrono = { version = "0.4", features = ["serde"] }
-diesel = { version = "1", features = ["postgres"], optional = true }
+diesel = { version = "2", features = ["postgres"], optional = true }
 http = "0.2"
 log = "0.4"
 rumqttc = "0.7"
