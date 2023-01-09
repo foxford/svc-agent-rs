@@ -18,7 +18,7 @@ queue-counter = []
 
 [dependencies]
 async-channel = "1"
-base64 = "0.13"
+base64 = "0.21"
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "1", features = ["postgres"], optional = true }
 http = "0.2"
