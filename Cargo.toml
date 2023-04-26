@@ -1,6 +1,6 @@
 [package]
 name = "svc-agent"
-version = "0.19.5"
+version = "0.19.6"
 authors = ["Andrei Nesterov <ae.nesterov@gmail.com>"]
 description = "An agent library."
 readme = "README.md"
@@ -18,7 +18,7 @@ queue-counter = []
 
 [dependencies]
 async-channel = "1"
-base64 = "0.13"
+base64 = "0.21"
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "1", features = ["postgres"], optional = true }
 http = "0.2"
@@ -27,6 +27,6 @@ rumqttc = "0.7"
 serde = { version = "1.0", features = ["derive" ] }
 serde_json = "1.0"
 sqlx = { version = "0.6", features = ["runtime-tokio-native-tls", "postgres"], optional = true }
-svc-authn = { version = "0.7", features = ["diesel", "sqlx"] }
-tokio = { version = "1", features = ["rt-multi-thread", "time"] }
-uuid = { version = "1.1", features = ["serde", "v4"] }
+svc-authn = { path = "../svc-authn-rs", features = ["diesel", "sqlx"] }
+tokio = { version = "1.28", features = ["rt-multi-thread", "time"] }
+uuid = { version = "1.3", features = ["serde", "v4"] }
