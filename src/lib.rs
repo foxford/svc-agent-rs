@@ -129,16 +129,9 @@ impl AgentId {
     /// let agent_id1 = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
     /// let agent_id2 = AgentId::new("web", AccountId::new("user_name", "usr.example.org"));
     /// ```
-    pub fn new(label: &str, account_id: AccountId) -> Self {
+    pub fn new<S: Into<String>>(label: S, account_id: AccountId) -> Self {
         Self {
-            label: label.to_owned(),
-            account_id,
-        }
-    }
-
-    pub fn new2(label: String, account_id: AccountId) -> Self {
-        Self {
-            label: label,
+            label: label.into(),
             account_id,
         }
     }
