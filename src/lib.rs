@@ -136,6 +136,13 @@ impl AgentId {
         }
     }
 
+    pub fn new2(label: String, account_id: AccountId) -> Self {
+        Self {
+            label: label,
+            account_id,
+        }
+    }
+
     pub fn label(&self) -> &str {
         &self.label
     }
