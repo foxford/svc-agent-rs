@@ -129,9 +129,9 @@ impl AgentId {
     /// let agent_id1 = AgentId::new("instance01", AccountId::new("service_name", "svc.example.org"));
     /// let agent_id2 = AgentId::new("web", AccountId::new("user_name", "usr.example.org"));
     /// ```
-    pub fn new(label: &str, account_id: AccountId) -> Self {
+    pub fn new<S: Into<String>>(label: S, account_id: AccountId) -> Self {
         Self {
-            label: label.to_owned(),
+            label: label.into(),
             account_id,
         }
     }
@@ -668,7 +668,7 @@ pub mod sql {
         fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
             let (account_id, label): (AccountId, String) =
                 FromSql::<Record<(Account_id, Text)>, Pg>::from_sql(bytes)?;
-            Ok(AgentId::new(&label, account_id))
+            Ok(AgentId::new(label, account_id))
         }
     }
 
