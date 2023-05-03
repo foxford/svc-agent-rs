@@ -668,7 +668,7 @@ pub mod sql {
         fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
             let (account_id, label): (AccountId, String) =
                 FromSql::<Record<(Account_id, Text)>, Pg>::from_sql(bytes)?;
-            Ok(AgentId::new(&label, account_id))
+            Ok(AgentId::new(label, account_id))
         }
     }
 
