@@ -57,7 +57,7 @@ pub trait Addressable: Authenticable {
 /// [AccountId](struct.AccountId.html) is different.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "diesel", derive(FromSqlRow, AsExpression))]
-#[cfg_attr(feature = "diesel", sql_type = "sql::Agent_id")]
+#[cfg_attr(feature = "diesel", diesel(sql_type = sql::Agent_id))]
 pub struct AgentId {
     account_id: AccountId,
     label: String,
@@ -647,25 +647,25 @@ impl<'a> ResponseSubscription<'a> {
 pub mod sql {
     use super::{AccountId, AgentId};
 
+    use diesel::backend::Backend;
     use diesel::deserialize::{self, FromSql};
     use diesel::pg::Pg;
     use diesel::serialize::{self, Output, ToSql, WriteTuple};
     use diesel::sql_types::{Record, Text};
-    use std::io::Write;
 
     #[derive(SqlType, QueryId)]
-    #[postgres(type_name = "agent_id")]
+    #[diesel(postgres_type(name = "agent_id"))]
     #[allow(non_camel_case_types)]
     pub struct Agent_id;
 
     impl ToSql<Agent_id, Pg> for AgentId {
-        fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        fn to_sql(&self, out: &mut Output<Pg>) -> serialize::Result {
             WriteTuple::<(Account_id, Text)>::write_tuple(&(&self.account_id, &self.label), out)
         }
     }
 
     impl FromSql<Agent_id, Pg> for AgentId {
-        fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
             let (account_id, label): (AccountId, String) =
                 FromSql::<Record<(Account_id, Text)>, Pg>::from_sql(bytes)?;
             Ok(AgentId::new(label, account_id))
