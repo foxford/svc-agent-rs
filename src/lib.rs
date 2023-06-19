@@ -107,6 +107,14 @@ impl sqlx::Type<sqlx::Postgres> for AgentId {
     }
 }
 
+#[cfg(feature = "sqlx")]
+impl sqlx::postgres::PgHasArrayType for AgentId {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        // https://github.com/launchbadge/sqlx/issues/1004#issuecomment-1019438437
+        sqlx::postgres::PgTypeInfo::with_name("_agent_id")
+    }
+}
+
 impl AgentId {
     /// Builds an [AgentId](struct.AgentId.html).
     ///
