@@ -29,10 +29,6 @@
 //! [SharedGroup](struct.SharedGroup.html) of subscribers.
 //! 3. **Unicast** that is intended for a specific agent.
 
-#[cfg_attr(feature = "diesel", macro_use)]
-#[cfg(feature = "diesel")]
-extern crate diesel;
-
 use std::fmt;
 use std::str::FromStr;
 
@@ -56,8 +52,6 @@ pub trait Addressable: Authenticable {
 /// disconnected by the broker. You can safely use the same `label` if
 /// [AccountId](struct.AccountId.html) is different.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "diesel", derive(FromSqlRow, AsExpression))]
-#[cfg_attr(feature = "diesel", sql_type = "sql::Agent_id")]
 pub struct AgentId {
     account_id: AccountId,
     label: String,
@@ -110,6 +104,22 @@ where
 impl sqlx::Type<sqlx::Postgres> for AgentId {
     fn type_info() -> sqlx::postgres::PgTypeInfo {
         sqlx::postgres::PgTypeInfo::with_name("agent_id")
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::postgres::PgHasArrayType for AgentId {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        // https://github.com/launchbadge/sqlx/issues/1004#issuecomment-1019438437
+        sqlx::postgres::PgTypeInfo::with_name("_agent_id")
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::postgres::PgHasArrayType for &AgentId {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        // https://github.com/launchbadge/sqlx/issues/1004#issuecomment-1019438437
+        sqlx::postgres::PgTypeInfo::with_name("_agent_id")
     }
 }
 
@@ -634,45 +644,6 @@ impl<'a> ResponseSubscription<'a> {
     pub fn new(source: Source<'a>) -> Self {
         Self { source }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Integration with [diesel](https://crates.io/crates/diesel).
-///
-/// It implements a diesel type for [AgentId](struct.AgentId) so you can store them in a database.
-///
-/// Compile with `diesel` feature enabled to make use of it.
-#[cfg(feature = "diesel")]
-pub mod sql {
-    use super::{AccountId, AgentId};
-
-    use diesel::deserialize::{self, FromSql};
-    use diesel::pg::Pg;
-    use diesel::serialize::{self, Output, ToSql, WriteTuple};
-    use diesel::sql_types::{Record, Text};
-    use std::io::Write;
-
-    #[derive(SqlType, QueryId)]
-    #[postgres(type_name = "agent_id")]
-    #[allow(non_camel_case_types)]
-    pub struct Agent_id;
-
-    impl ToSql<Agent_id, Pg> for AgentId {
-        fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-            WriteTuple::<(Account_id, Text)>::write_tuple(&(&self.account_id, &self.label), out)
-        }
-    }
-
-    impl FromSql<Agent_id, Pg> for AgentId {
-        fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
-            let (account_id, label): (AccountId, String) =
-                FromSql::<Record<(Account_id, Text)>, Pg>::from_sql(bytes)?;
-            Ok(AgentId::new(label, account_id))
-        }
-    }
-
-    pub use svc_authn::sql::Account_id;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
