@@ -2,11 +2,10 @@ use serde::{de, ser};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::{
-    mqtt::agent::{Connection, ConnectionMode},
-    mqtt::TrackingId,
-    AgentId, SharedGroup,
-};
+use crate::{AgentId, SharedGroup};
+
+#[cfg(feature = "mqtt")]
+pub use mqtt::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,88 +104,6 @@ impl<'de> de::Deserialize<'de> for SharedGroup {
         deserializer.deserialize_str(SharedGroupVisitor)
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-impl ser::Serialize for ConnectionMode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: ser::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> de::Deserialize<'de> for ConnectionMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        struct ConnectionModeVisitor;
-
-        impl<'de> de::Visitor<'de> for ConnectionModeVisitor {
-            type Value = ConnectionMode;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("enum ConnectionMode")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                use std::str::FromStr;
-
-                ConnectionMode::from_str(v)
-                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
-            }
-        }
-
-        deserializer.deserialize_str(ConnectionModeVisitor)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-impl ser::Serialize for Connection {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: ser::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> de::Deserialize<'de> for Connection {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        struct ConnectionVisitor;
-
-        impl<'de> de::Visitor<'de> for ConnectionVisitor {
-            type Value = Connection;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct Connection")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                use std::str::FromStr;
-
-                Connection::from_str(v)
-                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
-            }
-        }
-
-        deserializer.deserialize_str(ConnectionVisitor)
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
 
 pub(crate) mod ts_milliseconds_string {
     use std::fmt;
@@ -396,100 +313,191 @@ pub(crate) mod duration_milliseconds_string_option {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-pub(crate) mod session_ids_list {
-    use std::fmt;
-    use std::str::FromStr;
+#[cfg(feature = "mqtt")]
+mod mqtt {
+    use super::*;
 
-    use serde::{de, ser};
+    use crate::{
+        mqtt::agent::{Connection, ConnectionMode},
+        mqtt::TrackingId,
+    };
 
-    use crate::mqtt::SessionId;
+    pub mod session_ids_list {
+        use std::fmt;
+        use std::str::FromStr;
 
-    pub(crate) fn serialize<S>(session_ids: &[SessionId], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: ser::Serializer,
-    {
-        let session_ids_str = session_ids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
+        use serde::{de, ser};
 
-        serializer.serialize_str(&session_ids_str)
-    }
+        use crate::mqtt::SessionId;
 
-    pub fn deserialize<'de, D>(d: D) -> Result<Vec<SessionId>, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        d.deserialize_str(SessionIdListVisitor)
-    }
-
-    pub struct SessionIdListVisitor;
-
-    impl<'de> de::Visitor<'de> for SessionIdListVisitor {
-        type Value = Vec<SessionId>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("session id list (whitespace separated)")
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        pub fn serialize<S>(session_ids: &[SessionId], serializer: S) -> Result<S::Ok, S::Error>
         where
-            E: de::Error,
+            S: ser::Serializer,
         {
-            let mut session_ids = vec![];
+            let session_ids_str = session_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
 
-            for session_id_str in s.split(' ') {
-                match SessionId::from_str(session_id_str) {
-                    Ok(session_id) => session_ids.push(session_id),
-                    Err(err) => {
-                        return Err(E::custom(format!(
-                            "failed to parse SessionId from string: {}",
-                            err
-                        )))
-                    }
-                }
-            }
-
-            Ok(session_ids)
+            serializer.serialize_str(&session_ids_str)
         }
-    }
-}
 
-impl ser::Serialize for TrackingId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: ser::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
+        pub fn deserialize<'de, D>(d: D) -> Result<Vec<SessionId>, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            d.deserialize_str(SessionIdListVisitor)
+        }
 
-impl<'de> de::Deserialize<'de> for TrackingId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        struct TrackingIdVisitor;
+        pub struct SessionIdListVisitor;
 
-        impl<'de> de::Visitor<'de> for TrackingIdVisitor {
-            type Value = TrackingId;
+        impl<'de> de::Visitor<'de> for SessionIdListVisitor {
+            type Value = Vec<SessionId>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct TrackingId")
+                formatter.write_str("session id list (whitespace separated)")
             }
 
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                use std::str::FromStr;
+                let mut session_ids = vec![];
 
-                TrackingId::from_str(v)
-                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+                for session_id_str in s.split(' ') {
+                    match SessionId::from_str(session_id_str) {
+                        Ok(session_id) => session_ids.push(session_id),
+                        Err(err) => {
+                            return Err(E::custom(format!(
+                                "failed to parse SessionId from string: {}",
+                                err
+                            )))
+                        }
+                    }
+                }
+
+                Ok(session_ids)
             }
         }
+    }
 
-        deserializer.deserialize_str(TrackingIdVisitor)
+    ////////////////////////////////////////////////////////////////////////////////
+
+    impl ser::Serialize for ConnectionMode {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: ser::Serializer,
+        {
+            serializer.serialize_str(&self.to_string())
+        }
+    }
+
+    impl<'de> de::Deserialize<'de> for ConnectionMode {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            struct ConnectionModeVisitor;
+
+            impl<'de> de::Visitor<'de> for ConnectionModeVisitor {
+                type Value = ConnectionMode;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("enum ConnectionMode")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where
+                    E: de::Error,
+                {
+                    use std::str::FromStr;
+
+                    ConnectionMode::from_str(v)
+                        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+                }
+            }
+
+            deserializer.deserialize_str(ConnectionModeVisitor)
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    impl ser::Serialize for Connection {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: ser::Serializer,
+        {
+            serializer.serialize_str(&self.to_string())
+        }
+    }
+
+    impl<'de> de::Deserialize<'de> for Connection {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            struct ConnectionVisitor;
+
+            impl<'de> de::Visitor<'de> for ConnectionVisitor {
+                type Value = Connection;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("struct Connection")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where
+                    E: de::Error,
+                {
+                    use std::str::FromStr;
+
+                    Connection::from_str(v)
+                        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+                }
+            }
+
+            deserializer.deserialize_str(ConnectionVisitor)
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////
+
+    impl ser::Serialize for TrackingId {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: ser::Serializer,
+        {
+            serializer.serialize_str(&self.to_string())
+        }
+    }
+
+    impl<'de> de::Deserialize<'de> for TrackingId {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            struct TrackingIdVisitor;
+
+            impl<'de> de::Visitor<'de> for TrackingIdVisitor {
+                type Value = TrackingId;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("struct TrackingId")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where
+                    E: de::Error,
+                {
+                    use std::str::FromStr;
+
+                    TrackingId::from_str(v)
+                        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+                }
+            }
+
+            deserializer.deserialize_str(TrackingIdVisitor)
+        }
     }
 }

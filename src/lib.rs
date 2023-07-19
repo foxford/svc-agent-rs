@@ -652,8 +652,10 @@ pub use svc_authn::{AccountId, Authenticable};
 
 pub use self::error::Error;
 pub mod error;
+#[cfg(feature = "mqtt")]
 pub mod mqtt;
 #[cfg(feature = "queue-counter")]
 pub mod queue_counter;
+#[cfg(feature = "mqtt")]
 pub mod request;
 pub(crate) mod serde;
